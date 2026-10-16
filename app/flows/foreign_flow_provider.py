@@ -157,20 +157,36 @@ class FINRAShortVolumeProvider(ForeignFlowProvider):
             out = out[out["date"] == pd.Timestamp(day)]
         return out
 
+    # Header mirip browser: CDN FINRA menolak (HTTP 403) User-Agent skrip generik dari IP datacenter. Di produksi
+    # 16 Okt 2026 seluruh unduhan ditolak lalu dianggap "file belum terbit" → 0 baris tanpa error (diperbaiki di sini).
+    HEADERS = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
+                             "Chrome/130.0 Safari/537.36",
+               "Accept": "text/plain,text/html;q=0.9,*/*;q=0.8", "Accept-Language": "en-US,en;q=0.9"}
+
     def _download(self, day: pd.Timestamp) -> str | None:
+        """Isi file, atau None bila belum terbit (404). HTTP 403/5xx dicatat sebagai DITOLAK (bukan 'belum terbit')."""
         import requests
         url = self.URL.format(prefix=self.prefix, ymd=day.strftime("%Y%m%d"))
+        last = None
         for i in range(3):
             try:
-                r = requests.get(url, timeout=self.timeout, headers={"User-Agent": "swing-stock-predictor-us"})
-            except Exception:
-                if i == 2:
-                    raise
+                r = requests.get(url, timeout=self.timeout, headers=self.HEADERS)
+            except Exception as e:
+                last = e
                 continue
-            if r.status_code in (403, 404):      # belum terbit / libur
+            if r.status_code == 404:
                 return None
+            if r.status_code == 403:
+                self._blocked += 1
+                return None
+            if r.status_code >= 500:
+                last = RuntimeError(f"HTTP {r.status_code}")
+                continue
             r.raise_for_status()
+            self._ok += 1
             return r.text
+        if last is not None:
+            raise last
         return None
 
     def fetch(self, start, end):
@@ -180,8 +196,12 @@ class FINRAShortVolumeProvider(ForeignFlowProvider):
         days = [d for d in pd.bdate_range(max(pd.Timestamp(start), self.FIRST_DATE), end) if cal.is_trading_day(d)]
         days = days[-self.backfill:]
         frames, missing = [], 0
+        self._ok, self._blocked = 0, 0
         for d in days:
             txt = self._download(d)
+            if self._blocked >= 5 and self._ok == 0:
+                raise RuntimeError(f"CDN FINRA menolak akses (HTTP 403) untuk {self._blocked} file berturut-turut dari "
+                                   "server ini — sumber flow tidak tersedia pada run ini")
             if not txt:
                 missing += 1
                 continue
@@ -201,7 +221,7 @@ class FINRAShortVolumeProvider(ForeignFlowProvider):
             norm["source_timestamp"] = d.strftime("%Y-%m-%d")
             frames.append(norm)
         if missing:
-            log.info("FINRA: %d hari bursa tanpa file (belum terbit/libur tak terdaftar)", missing)
+            log.info("FINRA: %d hari bursa tanpa file (%d ditolak 403, sisanya belum terbit/libur)", missing, self._blocked)
         return pd.concat(frames, ignore_index=True) if frames else pd.DataFrame(columns=CANON)
 
 

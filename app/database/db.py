@@ -27,6 +27,15 @@ class DatabaseError(RuntimeError):
     pass
 
 
+class DatabaseAuthError(DatabaseError):
+    """Kredensial/nama database salah. Tidak bersifat sementara → tidak dicoba ulang."""
+
+
+# Pesan server yang berarti DATABASE_URL salah isi (bukan gangguan jaringan) — percobaan ulang tidak akan menolong.
+_AUTH_ERRORS = ("password authentication failed", "no password supplied", "role \"", "does not exist",
+                "no pg_hba.conf entry", "invalid dsn", "missing \"=\"")
+
+
 def _py(v):
     """Konversi nilai numpy/pandas ke tipe Python yang diterima driver DB."""
     if v is None:
@@ -131,8 +140,8 @@ class Database:
                     self.conn.commit()
                 return out
             except Exception as e:
-                if self._in_tx:
-                    raise                               # transaction() yang melakukan rollback
+                if self._in_tx or isinstance(e, DatabaseAuthError):
+                    raise                               # transaction() yang rollback / kredensial salah: jangan ulang
                 self._recover()
                 if self._conn is not None or attempt + 1 >= attempts:
                     raise                               # error SQL biasa, atau sudah dicoba ulang
@@ -312,6 +321,12 @@ class PostgresDatabase(Database):
                 return psycopg.connect(self.url, connect_timeout=self.profile.connect_timeout_s, prepare_threshold=None)
             except Exception as e:  # pragma: no cover - jaringan
                 last = e
+                msg = str(e).lower()
+                if any(k in msg for k in _AUTH_ERRORS):
+                    raise DatabaseAuthError(
+                        f"Login ke PostgreSQL ({self.provider}) DITOLAK: user/password/nama database di DATABASE_URL "
+                        "salah. Salin ulang Service URI lengkap dari console (password asli, bukan tanda bintang), "
+                        "lalu perbarui secret DATABASE_URL. Tidak dicoba ulang karena ini bukan gangguan jaringan.") from e
                 if attempt + 1 < self.profile.connect_attempts:
                     time.sleep(min(2 ** attempt, 15))
         # Pesan error driver bisa memuat host; tidak pernah memuat password (psycopg menyamarkannya).

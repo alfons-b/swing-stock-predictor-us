@@ -56,11 +56,54 @@ def _ingest(ctx: AppContext, run: PipelineRun, full_actions: bool = False) -> di
     return {"universe": uni, "ingestion": st.as_dict(), "_failed_all": dict(st.failed), "_no_data": list(st.no_data)}
 
 
+def _ensure_earnings_history(ctx: AppContext, min_share: float = 0.25) -> dict | None:
+    """Fitur f2 memakai tanggal rilis laba SEC. Bila tabel earnings_events (hampir) kosong — upgrade pertama atau
+    database baru — isi dulu SEBELUM model dilatih; kalau tidak, model belajar f_ear3 = NaN untuk semua baris lalu
+    distribusinya bergeser begitu event mulai terisi. Gagal / SEC tidak tersedia → lanjut tanpa (dicatat di log)."""
+    try:
+        n_with = int(ctx.db.scalar("SELECT COUNT(DISTINCT stock_id) FROM earnings_events") or 0)
+        n_active = int(ctx.db.scalar("SELECT COUNT(*) FROM stocks WHERE is_active = ?", (True,)) or 0)
+    except Exception:
+        return None
+    if n_active == 0 or n_with >= min_share * n_active:
+        return None
+    from app.valuation.fundamental_provider import make_fundamental_providers, update_fundamentals
+    if not any(hasattr(p, "get_earnings_events") for p in make_fundamental_providers(ctx.cfg)):
+        return None
+    log.info("Riwayat rilis laba baru tersedia untuk %d/%d saham — backfill dari SEC sebelum training", n_with, n_active,
+             extra={"persist": True})
+    try:
+        st = update_fundamentals(ctx.cfg, ctx.repo, pd.Timestamp(ctx.cfg.get("_as_of") or pd.Timestamp.today()),
+                                 earnings_backfill=True)
+    except Exception as e:
+        log.warning("Backfill earnings gagal (lanjut tanpa fitur earnings): %s", e, extra={"persist": True})
+        return None
+    bf = st.get("earnings_backfill") or {}
+    return {"stocks_checked": int(st.get("checked", 0)) + int(bf.get("checked", 0)),
+            "event_rows": int(st.get("earnings_events", 0)) + int(bf.get("rows", 0))}
+
+
+def _model_needs_upgrade(ctx: AppContext) -> bool:
+    try:
+        _, active = ctx.models.load_active_model()
+    except Exception:
+        return False
+    return active.get("feature_version") != FEATURE_VERSION
+
+
 def _load_model(ctx: AppContext):
     model, active = ctx.models.load_active_model()
     if active.get("feature_version") != FEATURE_VERSION:
-        raise PipelineAbort(f"Model {active['version']} memakai feature_version {active.get('feature_version')} "
-                            f"≠ {FEATURE_VERSION}. Jalankan workflow retrain.")
+        if not get(ctx.cfg, "pipeline.auto_retrain_on_feature_change", True):
+            raise PipelineAbort(f"Model {active['version']} memakai feature_version {active.get('feature_version')} "
+                                f"≠ {FEATURE_VERSION}. Jalankan workflow retrain.")
+        # Kode fitur/label baru ter-deploy → latih ulang SEKALI di sini agar daily tidak berhenti (±10–20 menit).
+        log.warning("Model %s memakai feature_version %s ≠ %s — retrain otomatis sebelum scan",
+                    active["version"], active.get("feature_version"), FEATURE_VERSION, extra={"persist": True})
+        job_train(ctx, force=True)
+        model, active = ctx.models.load_active_model()
+        if active.get("feature_version") != FEATURE_VERSION:
+            raise PipelineAbort("Retrain otomatis tidak menghasilkan model aktif dengan feature_version baru")
     return model, active["version"]
 
 
@@ -223,6 +266,8 @@ def job_daily(ctx: AppContext, skip_ingest: bool = False) -> dict:
         run.stats["data_status"] = fresh["status"]
         if fresh["status"] == "UNAVAILABLE":
             raise PipelineAbort("Tidak ada data harga di database")
+        if _model_needs_upgrade(ctx):
+            run.stats["earnings_backfill"] = _ensure_earnings_history(ctx)
         df = build_dataset(ctx.cfg, ctx.repo, int(get(ctx.cfg, "pipeline.scan_lookback_trading_days", 520)), labels=False)
         model, version = _load_model(ctx)
         run.stats["model_version"] = version
@@ -312,9 +357,15 @@ def job_backtest(ctx: AppContext, last_n_folds: int | None = None, live: bool = 
         out = walk_forward_backtest(ctx.cfg, df, model.meta["classifiers"], model.features, ctx.repo, version, n)
         if live:
             out["live"] = live_backtest(ctx.cfg, ctx.repo, df)
+        try:                                             # bukti per faktor (rank IC vs return residual) — dashboard
+            from app.research.factor_report import run_factor_report
+            fr = run_factor_report(ctx, df)
+            out["factor_ic_top"] = fr.head(15).round(4).to_dict(orient="records") if len(fr) else []
+        except Exception as e:  # laporan tambahan tidak boleh menggagalkan backtest
+            log.warning("Laporan IC faktor gagal: %s", e)
         run.stats["model_version"] = version
         run.stats["summary"] = {k: {kk: vv for kk, vv in (v or {}).items() if kk in ("run_id", "strategy", "ihsg_buy_hold")}
-                                for k, v in out.items()}
+                                for k, v in out.items() if isinstance(v, dict) or v is None}
         return out
 
 
@@ -416,6 +467,7 @@ def job_setup(ctx: AppContext, skip_backtest: bool = False) -> dict:
         run.stats["summary"] = {"ingestion": {k: v for k, v in out["ingest"]["ingestion"].items() if k != "failed"}}
     out["validation"] = job_validate(ctx)[["check", "severity", "count"]].to_dict(orient="records")
     out["features"] = job_features(ctx)
+    out["earnings_backfill"] = _ensure_earnings_history(ctx)
     from app.models.retrain import retrain
     with PipelineRun(ctx, "retrain") as run:
         df = build_dataset(ctx.cfg, ctx.repo, None, labels=True)

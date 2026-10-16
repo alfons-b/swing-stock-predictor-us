@@ -87,6 +87,20 @@ class UniverseManager:
         raise RuntimeError("Universe tidak bisa diambil dari sumber mana pun — periksa akses ke Wikipedia, atau simpan "
                            "daftar saham sebagai config/universe.csv (kolom minimal: Symbol) lalu commit & push")
 
+    def _record_sources(self, source: str, fresh: pd.DataFrame) -> None:
+        """Status per indeks di tabel data_sources (dashboard → Data Health) — kegagalan sumber tidak lagi diam."""
+        errors = fresh.attrs.get("errors") or {}
+        counts = fresh.attrs.get("counts") or fresh.get("board", pd.Series(dtype=object)).value_counts().to_dict()
+        try:
+            for ix in get(self.cfg, "universe.indexes", []) or []:
+                if ix in errors:
+                    self.repo.set_source_availability(f"universe_{ix}", "universe", "ERROR", errors[ix], 1)
+                else:
+                    self.repo.set_source_availability(f"universe_{ix}", "universe", "AVAILABLE",
+                                                      f"{source}; {counts}", 1)
+        except Exception as e:  # pragma: no cover - pencatatan tidak boleh menggagalkan update universe
+            log.debug("catat status universe gagal: %s", e)
+
     def apply_ticker_changes(self) -> list[str]:
         p = resolve_path(self.cfg, get(self.cfg, "universe.ticker_changes_file", "config/ticker_changes.yaml"))
         if not p.exists():
@@ -103,6 +117,7 @@ class UniverseManager:
         renamed = self.apply_ticker_changes()
         fresh, source = self.fetch_universe()
         complete = bool(fresh.attrs.get("complete", True))  # dibaca sebelum transformasi (attrs bisa hilang)
+        self._record_sources(source, fresh)
         existing = self.repo.stocks()
         now = now_utc()
         fresh = fresh.copy()

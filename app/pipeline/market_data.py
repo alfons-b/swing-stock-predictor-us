@@ -30,7 +30,13 @@ def load_market(cfg: dict, repo: Repository, start=None, end=None) -> dict:
     if prices.empty or index.empty:
         raise RuntimeError("Database belum berisi data harga/S&P 500 — jalankan `python main.py setup` atau `update-data`")
     clean, notes = clean_prices(prices, uni, ca, cfg, provider_adjusted=False)
-    return {"prices": clean, "index": index, "universe": uni, "corporate_actions": ca,
+    try:
+        from app.valuation.fundamental_provider import load_earnings_events
+        earnings = load_earnings_events(repo)
+    except Exception as e:                       # database lama tanpa tabel → fitur earnings NaN (bukan error)
+        log.debug("earnings_events tidak tersedia: %s", e)
+        earnings = pd.DataFrame(columns=["ticker", "reaction_date"])
+    return {"prices": clean, "index": index, "universe": uni, "corporate_actions": ca, "earnings": earnings,
             "fundamentals": pd.DataFrame(), "news": pd.DataFrame(), "cleaner_notes": notes}
 
 

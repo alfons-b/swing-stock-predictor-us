@@ -53,8 +53,15 @@ mengatakan apa pun tentang pasar saham AS.
 ## 6. Model dan strategi
 
 - Parameter strategi (setup, ATR stop, ambang regime) diwarisi dari versi BEI dan belum dikalibrasi ulang untuk
-  pasar AS. Bandingkan strategi ML vs teknikal-saja vs S&P 500 buy & hold di Weekly Backtest sebelum memercayai
-  sinyal.
+  pasar AS. Bandingkan strategi ML vs teknikal-saja vs **benchmark beta-matched** di Weekly Backtest, dan lihat
+  verdict signifikansi (QUANT_V2.md §2.5) sebelum memercayai sinyal.
+- Audit 16 Okt 2026: backtest produksi (6 bulan, Sharpe 0,47) secara statistik **belum** membuktikan edge — standard
+  error Sharpe untuk 6 bulan ±1,4. Butuh ≥ 2–3 tahun out-of-sample untuk bukti yang layak.
+- `f_ear3` adalah proksi kejutan laba dari reaksi harga, bukan surprise EPS vs konsensus analis (data konsensus tidak
+  tersedia gratis). Tanggal rilis berikutnya **diperkirakan** dari pola kuartalan sebelumnya — bisa meleset beberapa
+  hari bila emiten menggeser jadwal; tetap cek kalender earnings untuk posisi besar.
+- Bukan portofolio long-short: label residual memilih saham yang relatif lebih kuat, tetapi posisi tetap long-only
+  sehingga return masih ikut beta pasar.
 - Pada data sintetis, lapisan ML tidak konsisten mengungguli aturan teknikal saja.
 - Bila model pertama gagal gerbang promosi, sistem mengaktifkannya sebagai BASELINE dan health check menampilkan
   `MODEL STATUS: WARN`.
@@ -70,7 +77,7 @@ mengatakan apa pun tentang pasar saham AS.
 
 ## 8. Verifikasi saat porting (16 Okt 2026)
 
-- Test suite lulus di SQLite **dan** PostgreSQL 16 lokal (251 lulus; 10 dilewati karena butuh torch/statsmodels untuk
+- Test suite lulus di SQLite **dan** PostgreSQL 16 lokal (264 lulus setelah v2; 10 dilewati karena butuh torch/statsmodels untuk
   model challenger — dijalankan di workflow `challenger_tests.yml`).
 - Pipeline `make-sample → setup → daily → research` berjalan end-to-end di SQLite dan PostgreSQL.
 - Lingkungan pengembangan tidak bisa mengakses Yahoo, Wikipedia, SEC, maupun FINRA, jadi pengambilan data **nyata**

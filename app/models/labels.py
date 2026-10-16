@@ -59,9 +59,43 @@ def class_thresholds(df: pd.DataFrame, cfg: dict, h: int | None = None):
     return pd.Series(lc["bull_threshold"], index=df.index), pd.Series(lc["bear_threshold"], index=df.index)
 
 
+def add_residual_returns(df: pd.DataFrame, h: int) -> pd.DataFrame:
+    """y_xs_{h}d = return saham h hari ke depan − beta(t) × return S&P 500 h hari ke depan (beta 60H, diketahui di t).
+    y_xsz_{h}d = y_xs dibagi volatilitas harian 20H × √h (skala risiko — saham volatil tidak otomatis menang)."""
+    if "idx_close" not in df:
+        return df
+    ix = df[["date", "idx_close"]].drop_duplicates("date").set_index("date")["idx_close"].sort_index()
+    m_fwd = ix.shift(-h) / ix - 1
+    beta = df["f_beta60"].fillna(1.0) if "f_beta60" in df else pd.Series(1.0, index=df.index)
+    df[f"y_xs_{h}d"] = df[f"y_ret_{h}d"] - beta * df["date"].map(m_fwd)
+    vol = df["vol20"].where(df["vol20"] > 0) if "vol20" in df else pd.Series(np.nan, index=df.index)
+    vol = vol.fillna(vol.median() if vol.notna().any() else 0.02)
+    df[f"y_xsz_{h}d"] = df[f"y_xs_{h}d"] / (vol * np.sqrt(h))
+    return df
+
+
 def add_class_label(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:
-    h = cfg["labels"]["SWING_HORIZON"]
+    """Label 3 kelas (0 bearish · 1 netral · 2 bullish).
+
+    mode `xs_resid` (default sejak f2): peringkat cross-sectional per tanggal dari return RESIDUAL berskala risiko
+      (y_xsz). Bullish = sepertiga teratas saham yang bisa ditransaksikan pada hari itu. Model belajar SAHAM MANA yang
+      akan mengungguli saham lain setelah memperhitungkan pasar & volatilitas — bukan "pasar sedang naik" atau
+      "saham ini volatil" (keduanya membuat label lama ±3% terlihat mudah ditebak: AUC 0,62 di produksi, tetapi
+      top-5 hanya +0,23%/trade sebelum biaya).
+    mode `fixed` / `vol_scaled`: label lama (return mentah > ambang)."""
+    lc = cfg["labels"]
+    h = lc["SWING_HORIZON"]
     r = df[f"y_ret_{h}d"]
+    if lc.get("mode", "fixed") == "xs_resid" and "idx_close" in df:
+        df = add_residual_returns(df, h)
+        z = df[f"y_xsz_{h}d"]
+        elig = df["is_tradeable"].astype(bool) if "is_tradeable" in df else pd.Series(True, index=df.index)
+        q = float(lc.get("xs_quantile", 1 / 3))
+        rank = z.where(elig).groupby(df["date"]).rank(pct=True)
+        y = np.where(rank > 1 - q, 2, np.where(rank <= q, 0, 1)).astype(float)
+        y[(z.isna() | rank.isna()).to_numpy()] = np.nan
+        df["y_class"] = y
+        return df
     up, dn = class_thresholds(df, cfg, h)
     y = np.where(r > up, 2, np.where(r < dn, 0, 1)).astype(float)
     y[r.isna().to_numpy()] = np.nan

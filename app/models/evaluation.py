@@ -80,3 +80,24 @@ def feature_ic_report(df: pd.DataFrame, features: list[str], target: str, max_da
         rows.append({"feature": f, "ic_mean": ics.mean(), "ic_std": ics.std(),
                      "ic_ir": ics.mean() / ics.std() if ics.std() > 0 else np.nan, "coverage": float(sub[f].notna().mean())})
     return pd.DataFrame(rows).sort_values("ic_mean", key=np.abs, ascending=False).reset_index(drop=True)
+
+
+def rank_ic(df: pd.DataFrame, score_col: str, target_col: str, min_names: int = 20) -> dict:
+    """Rank IC harian (Spearman skor vs target di antara saham pada tanggal yang sama) → rata-rata, IR, t-stat.
+    Ukuran standar skill seleksi saham: IC 0,02–0,05 yang konsisten sudah bernilai bila biaya terkendali."""
+    d = df[["date", score_col, target_col]].dropna()
+    if d.empty:
+        return {}
+    r = d.groupby("date")[[score_col, target_col]].rank(pct=True)
+    r["date"] = d["date"]
+    n = r.groupby("date")[score_col].transform("size")
+    r = r[n >= min_names]
+    if r.empty:
+        return {}
+    ic = r.groupby("date").apply(lambda g: g[score_col].corr(g[target_col]), include_groups=False).dropna()
+    if len(ic) < 5:
+        return {}
+    sd = ic.std(ddof=1)
+    return {"rank_ic_mean": float(ic.mean()), "rank_ic_ir": float(ic.mean() / sd) if sd > 0 else float("nan"),
+            "rank_ic_tstat": float(ic.mean() / sd * np.sqrt(len(ic))) if sd > 0 else float("nan"),
+            "rank_ic_hit": float((ic > 0).mean()), "rank_ic_days": int(len(ic))}

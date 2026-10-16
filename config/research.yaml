@@ -24,6 +24,7 @@ fundamentals:
       suffix: ""
   refresh_days: 7                  # saham dicek ulang paling cepat tiap N hari (incremental)
   max_per_run: 150                 # maksimal saham per daily run (±900 saham tersegarkan ±1×/minggu)
+  earnings_watch_max: 300          # cek harian 8-K laba untuk saham yang diperkirakan rilis ±minggu ini (1 request SEC/saham)
   price_currency: USD
   # Estimasi tanggal publikasi bila tanggal asli tidak diketahui (CSV tanpa publication_date) — HANYA untuk riset
   # backtest, diberi label ESTIMATED_PIT. Batas SEC: 10-K 60–90 hari, 10-Q 40–45 hari setelah akhir periode.

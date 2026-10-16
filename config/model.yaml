@@ -1,7 +1,10 @@
 labels:
   HORIZONS: [3, 5, 10]
   SWING_HORIZON: 5
-  mode: fixed
+  # xs_resid (f2): sepertiga teratas return RESIDUAL (dikurangi beta × S&P 500) berskala volatilitas, per tanggal.
+  # fixed: return mentah > ±3% (label lama — tercampur volatilitas & arah pasar). vol_scaled: ±vol_k × vol20 × √h.
+  mode: xs_resid
+  xs_quantile: 0.3333
   bull_threshold: 0.03
   bear_threshold: -0.03
   vol_k: 0.75

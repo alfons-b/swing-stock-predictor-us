@@ -45,6 +45,16 @@ def apply_filters(df: pd.DataFrame, setups: pd.DataFrame, pred: pd.DataFrame, st
     prob_min = probability_threshold(pred, cfg) + prob_add
     er = pred.get(f"expected_return_{h}d", pd.Series(0.0, index=df.index))
 
+    # Biaya pulang-pergi (fee beli + jual + slippage 2 sisi): expected return harus MELEBIHI biaya, bukan sekadar > 0.
+    b = cfg.get("backtest", {})
+    rt_cost = b.get("TRANSACTION_FEE_BUY", 0) + b.get("TRANSACTION_FEE_SELL", 0) + 2 * b.get("SLIPPAGE_BPS", 0) / 1e4
+    min_net = float(st.get("min_net_expected_return", 0.0)) + float(st.get("cost_multiple", 1.0)) * rt_cost
+    # Earnings: perkiraan rilis laba berikutnya jatuh di dalam masa pegang → gap bisa melompati stop loss.
+    window = float(st.get("earnings_blackout_calendar_days", 0) or 0)
+    earn_days = pd.to_numeric(df["earn_soon_days"], errors="coerce") if "earn_soon_days" in df else \
+        pd.Series(np.nan, index=df.index)
+    earn_risk = ((earn_days <= window) & (window > 0)).fillna(False)   # tanpa data earnings → tidak memblokir
+
     checks = {
         "illiquid": ~df["is_liquid"],
         "suspended": df["is_suspended"],
@@ -60,6 +70,8 @@ def apply_filters(df: pd.DataFrame, setups: pd.DataFrame, pred: pd.DataFrame, st
         "probability_below_min": pred["probability_bullish"] < prob_min,
         "bearish_outweighs_bullish": pred["probability_bearish"] >= pred["probability_bullish"],
         "expected_return_not_positive": er <= 0,
+        "expected_return_below_cost": er <= min_net,
+        "earnings_within_holding": earn_risk,
         "model_uncertainty_high": pred["prob_dispersion"] > st["max_uncertainty"],
         "position_too_small": sizing["position_lots"] < 1,
         "score_below_buy_min": scores["final_score"] < sc["buy_score_min"],

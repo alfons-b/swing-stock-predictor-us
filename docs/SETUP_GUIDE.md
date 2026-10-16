@@ -261,13 +261,35 @@ hasil Daily tetap tersedia jauh sebelum sesi berikutnya. Butuh lebih cepat? Jala
 
 | Kapan | Apa |
 |---|---|
-| Tiap hari bursa (pagi WIB) | Buka dashboard → Top Swing Stocks. **Cek kalender earnings** saham kandidat sebelum masuk posisi (tidak disaring otomatis). |
-| Mingguan | Dashboard → Backtest: bandingkan strategi ML vs teknikal-saja vs S&P 500 buy & hold. |
+| Tiap hari bursa (pagi WIB) | Buka dashboard → Top Swing Stocks. Saham dengan perkiraan rilis laba ≤ 16 hari sudah disaring otomatis (`earnings_within_holding`), tetapi tanggalnya **perkiraan** — cek kalender earnings untuk posisi besar. |
+| Mingguan | Dashboard → Backtest: lihat **verdict signifikansi** dan bandingkan strategi vs *beta-matched benchmark* (bukan S&P 500 penuh). Dashboard → Model Performance: tabel Factor IC. |
 | Bila dapat email "workflow failed" | Buka run yang merah; lihat Troubleshooting. |
 | Bila dapat email Aiven "service powered off" | console.aiven.io → service → **Power on**, lalu jalankan Daily manual. |
 | Tiap ±6 bulan | Perbarui asumsi valuasi di `config/research.yaml` (UST 10Y, ERP; health WARN bila > 180 hari). |
 | Tiap akhir tahun | Tambahkan libur NYSE tahun berikutnya ke `config/holidays.yaml` (sumber: nyse.com/markets/hours-calendars). |
 | Bila repo tidak di-commit 60 hari | GitHub menonaktifkan jadwal di repo publik — aktifkan lagi di tab Actions atau lakukan satu commit. |
+
+---
+
+## Upgrade ke quant v2 (repo yang sudah berjalan)
+
+Perubahan lengkap dan alasannya: [`QUANT_V2.md`](QUANT_V2.md). Database dan secret **tidak** perlu diubah.
+
+1. Ganti isi repo dengan folder baru ini (pertahankan `.git`), lalu `git add -A && git commit -m "quant v2" && git push`.
+2. Actions → **Tests** → pastikan hijau.
+3. Actions → **Fundamental Refresh** → *Run workflow* (±10–20 menit). Langkah ini membuat tabel `earnings_events`
+   (skema v8, otomatis) dan mengisi riwayat tanggal rilis laba 7 tahun dari SEC untuk semua saham.
+   Lewati pun tidak apa-apa: Daily berikutnya akan melakukan backfill ini sendiri sebelum melatih ulang model,
+   hanya saja run Daily itu menjadi lebih lama.
+4. Actions → **Daily Market Pipeline** → *Run workflow*. Log akan menampilkan
+   `Model model_v00X memakai feature_version f1 ≠ f2 — retrain otomatis sebelum scan` (±10–25 menit sekali saja),
+   lalu scan berjalan dengan model baru.
+5. Actions → **Weekly Backtest** → *Run workflow* untuk langsung melihat verdict signifikansi dan Factor IC.
+6. Dashboard tidak perlu di-deploy ulang secara manual — Streamlit Cloud mengambil kode baru dari repo. Bila halaman
+   Model Performance error `permission denied` pada tabel baru, jalankan ulang `scripts/create_dashboard_role.py`.
+
+Yang akan Anda lihat berbeda: AUC model turun (±0,55–0,59) karena target sekarang market-neutral — ini disengaja dan
+lebih jujur; jumlah sinyal BUY bisa lebih sedikit karena filter earnings dan biaya.
 
 ---
 
@@ -283,6 +305,9 @@ Semua lewat file config (commit + push) atau Variable GitHub:
 | Universe | `config/sources.yaml` → `universe.indexes` (`[sp500]` lebih hemat; `sp600` tidak muat di 1 GB) |
 | Harga minimum / likuiditas | `config/app.yaml` → `quality.min_price` ($5), `liquidity.MIN_AVG_TRADING_VALUE` ($10 juta/hari) |
 | Jam Daily | `.github/workflows/daily.yml` → `cron` (UTC) |
+| Label model | `config/model.yaml` → `labels.mode` (`xs_resid` default; `fixed` = perilaku lama ±3%) |
+| Blackout earnings | `config/trading.yaml` → `strategy.earnings_blackout_calendar_days` (16; `0` = nonaktif) |
+| Gerbang biaya | `config/trading.yaml` → `strategy.cost_multiple` (ekspektasi return ≥ N × biaya pulang-pergi) |
 
 ---
 
@@ -330,6 +355,10 @@ Uji dengan data nyata di laptop (butuh internet): hapus dua variabel di atas, se
 | Workflow terjadwal tidak jalan | repo tidak aktif 60 hari / workflow di-*disable* | Actions → pilih workflow → *Enable workflow* |
 | Dashboard error "Supabase/Neon" | Secret dashboard salah | ganti `DATABASE_URL` di Secrets Streamlit → Reboot app |
 | Dashboard `permission denied` | role read-only dibuat sebelum tabel ada | jalankan ulang `scripts/create_dashboard_role.py` |
+| `password authentication failed for user "avnadmin"` | password di secret `DATABASE_URL` salah/berubah | salin ulang Service URI dari console Aiven → ganti secret |
+| Log `FINRA menolak akses (HTTP 403)` | CDN FINRA memblokir IP runner | sementara; fitur short-flow kosong tetapi pipeline tetap jalan. Bila berlangsung > 1 minggu set Variable `FINRA_ENABLED=false` |
+| Data Health `universe_sp400` gagal | Wikipedia menolak User-Agent | pastikan Variable `SEC_USER_AGENT` berisi email; run berikutnya memakai cadangan REST API |
+| Verdict `BELUM ADA BUKTI EDGE` | backtest belum mengalahkan benchmark beta-matched secara signifikan | bukan error — jangan menaikkan modal; lihat QUANT_V2.md §3 |
 
 ---
 

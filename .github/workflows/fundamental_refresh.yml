@@ -49,10 +49,10 @@ jobs:
         run: |
           set -o pipefail
           python main.py sectors-update --limit 1000 | tee -a "$GITHUB_STEP_SUMMARY"
-      - name: Perbarui laporan keuangan (incremental)
+      - name: Perbarui laporan keuangan (incremental) + riwayat tanggal rilis laba
         run: |
           set -o pipefail
-          python main.py --set fundamentals.max_per_run=2000 fundamentals-update \
+          python main.py --set fundamentals.max_per_run=2000 fundamentals-update --earnings-backfill \
             ${{ inputs.tickers && format('--tickers {0}', inputs.tickers) || '' }} | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Hitung ulang valuasi
         run: |

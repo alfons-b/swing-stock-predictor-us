@@ -221,6 +221,55 @@ def store_statements(repo: Repository, cfg: dict, statements: list[Statement], t
     return len(rows)
 
 
+def store_earnings_events(repo: Repository, ev: pd.DataFrame) -> int:
+    """UPSERT idempoten per (stock_id, accession)."""
+    if ev is None or ev.empty:
+        return 0
+    ids = repo.stock_ids()
+    d = ev.copy()
+    d["stock_id"] = d["ticker"].map(ids)
+    d = d.dropna(subset=["stock_id", "reaction_date"])
+    if d.empty:
+        return 0
+    d["stock_id"] = d["stock_id"].astype(int)
+    for c in ("filing_date", "reaction_date"):
+        d[c] = pd.to_datetime(d[c]).dt.strftime("%Y-%m-%d")
+    d["accepted_at"] = d["accepted_at"].astype(object).where(d["accepted_at"].notna(), None).map(
+        lambda x: None if x is None else str(x))
+    d["source"], d["retrieved_at"] = "sec_8k_2.02", now_utc()
+    repo.db.upsert("earnings_events", d[["stock_id", "accession", "filing_date", "accepted_at", "reaction_date", "form",
+                                         "source", "retrieved_at"]], keys=["stock_id", "accession"], count=False)
+    return len(d)
+
+
+def load_earnings_events(repo: Repository) -> pd.DataFrame:
+    return repo.db.query_df("SELECT s.ticker, e.reaction_date FROM earnings_events e JOIN stocks s ON s.id = e.stock_id",
+                            parse_dates=["reaction_date"])
+
+
+def earnings_watchlist(events: pd.DataFrame, today, before_days: int = 3, after_days: int = 12) -> list[str]:
+    """Ticker yang rilis labanya diperkirakan jatuh di [today − after_days, today + before_days] dan belum tercatat.
+
+    Mengapa: laporan fundamental tiap saham hanya dicek ulang tiap `refresh_days` (7 hari), sehingga 8-K laba baru
+    bisa terlambat terdeteksi hingga seminggu — sementara backtest mengasumsikan event diketahui H+1. Daftar ini
+    dicek SETIAP hari (hanya 1 request SEC per ticker) agar fitur PEAD/earnings di scan live = di backtest."""
+    if events is None or events.empty:
+        return []
+    today = pd.Timestamp(today).normalize()
+    out = []
+    for t, g in events.groupby("ticker"):
+        d = pd.to_datetime(g["reaction_date"]).sort_values().drop_duplicates()
+        last = d.iloc[-1]
+        gaps = d.diff().dt.days.dropna()
+        gaps = gaps[(gaps >= 45) & (gaps <= 140)].tail(4)
+        if gaps.empty or (today - last).days < 30:          # baru rilis / tanpa pola kuartalan → tidak perlu dipantau
+            continue
+        est = last + pd.Timedelta(days=int(gaps.median()))
+        if est - pd.Timedelta(days=before_days) <= today <= est + pd.Timedelta(days=after_days):
+            out.append(t)
+    return out
+
+
 def load_statements(repo: Repository, as_of=None, use_estimated: bool = False) -> pd.DataFrame:
     """Laporan yang SUDAH diketahui pada `as_of` (versi terakhir per periode & sumber).
 
@@ -241,8 +290,11 @@ def load_statements(repo: Repository, as_of=None, use_estimated: bool = False) -
     return df
 
 
-def update_fundamentals(cfg: dict, repo: Repository, today, tickers: list[str] | None = None) -> dict:
-    """Incremental: hanya emiten yang belum pernah dicek / sudah > refresh_days, maksimal max_per_run per run."""
+def update_fundamentals(cfg: dict, repo: Repository, today, tickers: list[str] | None = None,
+                        earnings_backfill: bool = False) -> dict:
+    """Incremental: hanya emiten yang belum pernah dicek / sudah > refresh_days, maksimal max_per_run per run.
+    earnings_backfill=True: juga ambil riwayat 8-K laba untuk SEMUA saham aktif yang belum punya event (dipakai
+    workflow Fundamental Refresh; wajib dijalankan sekali setelah upgrade ke fitur f2, sebelum Daily)."""
     today = pd.Timestamp(today).normalize()
     providers = make_fundamental_providers(cfg)
     stats = {"providers": {}, "checked": 0, "new_versions": 0, "failed": 0}
@@ -260,7 +312,8 @@ def update_fundamentals(cfg: dict, repo: Repository, today, tickers: list[str] |
     checked = pd.to_datetime(st["fundamentals_checked_at"], errors="coerce", utc=True) if "fundamentals_checked_at" in st \
         else pd.Series(pd.NaT, index=st.index)
     now = pd.Timestamp.now(tz="UTC")
-    due = st[checked.isna() | (now - checked > refresh)].assign(_c=checked).sort_values("_c", na_position="first")
+    # assign SEBELUM filter: assign ke frame kosong mengadopsi index Series → semua saham dianggap jatuh tempo
+    due = st.assign(_c=checked)[checked.isna() | (now - checked > refresh)].sort_values("_c", na_position="first")
     if tickers:
         due = st[st["ticker"].isin(tickers)]
     due = due.head(int(get(cfg, "fundamentals.max_per_run", 150)))
@@ -276,9 +329,46 @@ def update_fundamentals(cfg: dict, repo: Repository, today, tickers: list[str] |
                 stats["new_versions"] += store_statements(repo, cfg, sts, today, p.point_in_time)
                 got = True
                 break
+        for p in usable:                                  # tanggal rilis laba (SEC 8-K 2.02) — fitur & filter earnings
+            if hasattr(p, "get_earnings_events"):
+                try:
+                    stats["earnings_events"] = stats.get("earnings_events", 0) + store_earnings_events(
+                        repo, p.get_earnings_events(t))
+                except Exception as e:
+                    log.debug("earnings %s via %s gagal: %s", t, p.name, e)
+                break
         stats["checked"] += 1
         stats["failed"] += 0 if got else 1
         repo.db.execute("UPDATE stocks SET fundamentals_checked_at = ? WHERE ticker = ?", (now_utc(), t))
+    ep = next((p for p in usable if hasattr(p, "get_earnings_events")), None)
+    if ep is not None and not tickers:
+        try:
+            ev = load_earnings_events(repo)
+        except Exception:                                  # tabel belum ada (skema lama)
+            ev = pd.DataFrame()
+        active = set(st["ticker"])
+        done = set(due["ticker"])
+        watch = [t for t in earnings_watchlist(ev, today) if t in active and t not in done]
+        watch = watch[:int(get(cfg, "fundamentals.earnings_watch_max", 300) or 0)]
+        found = 0
+        for t in watch:
+            try:
+                found += store_earnings_events(repo, ep.get_earnings_events(t, years=1))
+            except Exception as e:
+                log.debug("earnings-watch %s gagal: %s", t, e)
+        stats["earnings_watch"] = {"checked": len(watch), "rows": found}
+        if earnings_backfill:
+            have = set(ev["ticker"]) if len(ev) else set()
+            todo = [t for t in st["ticker"] if t not in have and t not in done]
+            found = 0
+            for t in todo:
+                try:
+                    found += store_earnings_events(repo, ep.get_earnings_events(t))
+                except Exception as e:
+                    log.debug("earnings-backfill %s gagal: %s", t, e)
+            stats["earnings_backfill"] = {"checked": len(todo), "rows": found}
+            log.info("Earnings backfill: %d saham tanpa riwayat dicek, %d event tersimpan", len(todo), found,
+                     extra={"persist": True})
     log.info("Fundamental: %d emiten dicek, %d versi laporan baru, %d tanpa data", stats["checked"], stats["new_versions"],
              stats["failed"], extra={"persist": True})
     return stats

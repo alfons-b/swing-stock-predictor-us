@@ -34,14 +34,33 @@ WIKI = {
     "nasdaq100": ("https://en.wikipedia.org/wiki/Nasdaq-100", "Nasdaq-100", 90),
 }
 GITHUB_SP500 = "https://raw.githubusercontent.com/datasets/s-and-p-500-companies/main/data/constituents.csv"
-UA = "swing-stock-predictor-us/1.0 (https://github.com; universe refresh)"
+def user_agent() -> str:
+    """Kebijakan User-Agent Wikimedia mewajibkan identitas + kontak; UA generik dari IP datacenter ditolak (HTTP 403).
+    Di produksi 16 Okt 2026 S&P 400 gagal diambil sehingga universe hanya 503 saham. Kontak diambil dari
+    SEC_USER_AGENT (yang memang berisi nama + email pemilik)."""
+    import os
+    contact = (os.environ.get("SEC_USER_AGENT") or "").strip()
+    email = next((w for w in contact.split() if "@" in w), "")
+    return f"swing-stock-predictor-us/1.1 (https://github.com/; {email or 'no-contact-configured'}) python-requests"
 
 
 def _http_get(url: str, timeout: int = 30) -> str:
+    """GET dengan cadangan: halaman wiki biasa → REST API HTML Wikipedia (endpoint berbeda, aturan cache berbeda)."""
     import requests
-    r = requests.get(url, timeout=timeout, headers={"User-Agent": UA})
-    r.raise_for_status()
-    return r.text
+    headers = {"User-Agent": user_agent(), "Accept": "text/html,application/xhtml+xml"}
+    urls = [url]
+    if "wikipedia.org/wiki/" in url:
+        title = url.split("/wiki/", 1)[1]
+        urls.append(f"https://en.wikipedia.org/api/rest_v1/page/html/{title}")
+    last = None
+    for u in urls:
+        try:
+            r = requests.get(u, timeout=timeout, headers=headers)
+            r.raise_for_status()
+            return r.text
+        except Exception as e:
+            last = e
+    raise last
 
 
 def _pick(cols, *names):
@@ -99,7 +118,7 @@ class USIndexUniverse:
         self.indexes = [str(i).lower() for i in (get(cfg, "universe.indexes", ["sp500", "sp400"]) or ["sp500"])]
 
     def get_universe(self) -> pd.DataFrame:
-        frames, missing, used = [], [], []
+        frames, missing, used, errors = [], [], [], {}
         for ix in self.indexes:
             if ix not in WIKI:
                 log.warning("Indeks universe tidak dikenal: %s (pilihan: %s)", ix, ", ".join(WIKI))
@@ -111,6 +130,7 @@ class USIndexUniverse:
             except Exception as e:
                 log.warning("Konstituen %s dari Wikipedia gagal: %s", board, e)
                 missing.append(ix)
+                errors[ix] = f"{type(e).__name__}: {e}"[:300]
         if "sp500" in missing:
             try:
                 frames.append(constituents_from_table(pd.read_csv(StringIO(self.http_get(GITHUB_SP500))), "S&P 500"))
@@ -124,6 +144,8 @@ class USIndexUniverse:
         u = conform_universe(u)
         u.attrs["complete"] = not missing
         u.attrs["source_detail"] = ",".join(used)
+        u.attrs["errors"] = errors
+        u.attrs["counts"] = u["board"].value_counts().to_dict()
         if missing:
             log.warning("Universe PARSIAL (gagal: %s) — saham yang tidak ada di daftar ini TIDAK dinonaktifkan",
                         ", ".join(missing))

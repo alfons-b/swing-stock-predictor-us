@@ -319,6 +319,22 @@ elif page == "Backtest":
         if b.get("technical_only", {}).get("total_return") is not None:
             st.caption(f"Pembanding teknikal-saja (tanpa ML): {b['technical_only']['total_return']:+.1%}, "
                        f"Sharpe {(b['technical_only'].get('sharpe') or float('nan')):.2f}")
+        sig = m.get("significance") if isinstance(m, dict) else None
+        if sig:
+            st.subheader("Bukti statistik (apakah ini skill atau keberuntungan?)")
+            s = st.columns(5)
+            s[0].metric("Alpha / tahun", f"{sig['alpha_annual']:+.1%}" if sig.get("alpha_annual") is not None else "n/a",
+                        help="Return di luar eksposur pasar (regresi harian terhadap S&P 500)")
+            s[1].metric("t-stat alpha", sig.get("alpha_tstat") if sig.get("alpha_tstat") is not None else "n/a",
+                        help="|t| ≥ 2 ≈ signifikan")
+            s[2].metric("Beta", sig.get("beta") if sig.get("beta") is not None else "n/a")
+            s[3].metric("Sharpe 90% CI", f"[{sig.get('sharpe_ci_low')}, {sig.get('sharpe_ci_high')}]"
+                        if sig.get("sharpe_ci_low") is not None else "n/a")
+            s[4].metric("Deflated Sharpe", sig.get("dsr") if sig.get("dsr") is not None else "n/a",
+                        help="Probabilitas Sharpe > keberuntungan setelah memperhitungkan jumlah konfigurasi yang dicoba")
+            if sig.get("beta_matched_index_return") is not None:
+                st.caption(f"Pembanding ADIL = beta × S&P 500 (eksposur pasar yang sama): "
+                           f"{sig['beta_matched_index_return']:+.1%}. {sig.get('verdict', '')}")
     elif isinstance(m, dict) and m.get("periods"):
         st.subheader("Perbandingan varian (setelah biaya)")
         vt = H.module_variant_table(m)
@@ -338,7 +354,17 @@ elif page == "Model Performance":
         if isinstance(m, dict) and m.get("folds"):
             st.subheader("Walk-forward per fold")
             st.dataframe(pd.DataFrame(m["folds"]), hide_index=True, use_container_width=True)
-            st.json({k: m.get(k) for k in ("auc_mean", "auc_std", "ece_bullish", "positive_fold_ratio", "head_to_head", "test_sealed")})
+            st.json({k: m.get(k) for k in ("auc_mean", "auc_std", "rank_ic_mean", "ece_bullish", "positive_fold_ratio",
+                                            "head_to_head", "test_sealed")})
+    st.subheader("Riset faktor — rank IC vs return residual 5 hari")
+    st.caption("Korelasi peringkat harian setiap fitur dengan return saham dikurangi beta × S&P 500, hanya tanggal yang "
+               "tidak tumpang tindih. |t| ≥ 2 ≈ signifikan. IC 12 bulan menunjukkan apakah sinyal masih hidup.")
+    fr = c.reports.latest("factor_ic")
+    if fr:
+        import io
+        st.dataframe(pd.read_csv(io.BytesIO(fr[1])), hide_index=True, use_container_width=True)
+    else:
+        st.info("Belum ada laporan faktor — dibuat oleh workflow Weekly Backtest (atau `python main.py factor-report`).")
 
 elif page == "Model Lab":
     from app.challengers import MODEL_LABELS, challenger_cfg
@@ -440,7 +466,7 @@ elif page == "Data Health":
     st.dataframe(pd.DataFrame([{"check": k, **v} for k, v in h["checks"].items()]), hide_index=True, use_container_width=True)
     st.json(c.repo.price_counts())
     st.subheader("Sumber data")
-    st.dataframe(q("SELECT name, type, priority, enabled, last_success_at, last_error_at, last_error, rows_fetched_total FROM data_sources"),
+    st.dataframe(q("SELECT name, type, status, detail, checked_at, last_success_at, last_error_at, last_error, rows_fetched_total FROM data_sources ORDER BY type, name"),
                  hide_index=True, use_container_width=True)
 
 

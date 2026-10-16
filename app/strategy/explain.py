@@ -20,7 +20,9 @@ REJECT_TEXT = {
     "probability_below_min": "Probabilitas bullish di bawah ambang (sudah disesuaikan regime)",
     "bearish_outweighs_bullish": "Probabilitas bearish >= bullish", "expected_return_not_positive": "Expected return tidak positif",
     "model_uncertainty_high": "Anggota ensemble tidak sepakat (uncertainty tinggi)",
-    "position_too_small": "Ukuran posisi < 1 saham setelah batas risiko/likuiditas", "score_below_buy_min": "Skor akhir di bawah ambang BUY",
+    "position_too_small": "Ukuran posisi < 1 saham setelah batas risiko/likuiditas",
+    "expected_return_below_cost": "Expected return tidak menutup biaya transaksi pulang-pergi",
+    "earnings_within_holding": "Perkiraan rilis earnings jatuh di dalam masa pegang (risiko gap melewati stop)", "score_below_buy_min": "Skor akhir di bawah ambang BUY",
 }
 
 FEATURE_TEXT = {

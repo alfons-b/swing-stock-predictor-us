@@ -144,6 +144,8 @@ def cmd_backtest(cfg, a):
     from app.pipeline.jobs import job_backtest
     out = job_backtest(_ctx(cfg), last_n_folds=a.folds, live=not a.no_live)
     for k, v in out.items():
+        if k == "factor_ic_top":
+            continue
         if not v:
             print(f"{k}: tidak ada data")
             continue
@@ -157,6 +159,15 @@ def cmd_backtest(cfg, a):
             print(f"  Teknikal : return {t.get('total_return', 0):+.1%} | Sharpe {t.get('sharpe', 0):.2f} | trades {t.get('number_of_trades', 0)}")
         if b:
             print(f"  S&P 500 B&H : return {b.get('total_return', 0):+.1%} | MaxDD {b.get('max_drawdown', 0):.1%} | Sharpe {b.get('sharpe', 0):.2f}")
+        sig = (s.get("significance") or {})
+        if sig.get("verdict"):
+            print(f"  Bukti statistik: {sig['verdict']}")
+            if sig.get("beta") is not None:
+                print(f"  Pembanding adil (beta {sig['beta']} × S&P 500): {sig.get('beta_matched_index_return', 0):+.1%}")
+    if out.get("factor_ic_top"):
+        print("\nRank IC faktor vs return residual 5H (|t| ≥ 2 ≈ signifikan):")
+        for r in out["factor_ic_top"][:15]:
+            print(f"  {r['feature']:<28} IC {r['ic_mean']:+.4f}  t {r['ic_tstat']:+.2f}  12 bln {r.get('ic_mean_12m') or float('nan'):+.4f}")
     return 0
 
 
@@ -337,10 +348,14 @@ def cmd_fundamentals_update(cfg, a):
     from app.valuation.fundamental_provider import update_fundamentals
     ctx = _ctx(cfg)
     tickers = [x.strip().upper() for x in a.tickers.split(",")] if a.tickers else None
-    st = update_fundamentals(cfg, ctx.repo, _as_of(cfg, a) or pd.Timestamp.today(), tickers)
+    st = update_fundamentals(cfg, ctx.repo, _as_of(cfg, a) or pd.Timestamp.today(), tickers,
+                             earnings_backfill=bool(getattr(a, "earnings_backfill", False)))
     for n, p in st["providers"].items():
         print(f"  {n:<22} {p['status']:<15} {p['detail']}")
     print(f"Dicek {st['checked']} emiten, {st['new_versions']} versi laporan baru, {st['failed']} tanpa data")
+    for k, label in (("earnings_watch", "Pantauan rilis laba"), ("earnings_backfill", "Backfill riwayat laba")):
+        if k in st:
+            print(f"{label}: {st[k]['checked']} saham dicek, {st[k]['rows']} event 8-K 2.02")
     return 0
 
 
@@ -369,6 +384,17 @@ def cmd_valuation(cfg, a):
     if not a.no_save and not a.estimated_pit:
         save_valuations(ctx.repo, df)
     print(df["valuation_status"].value_counts().to_string() if len(df) else "Tidak ada emiten aktif")
+    return 0
+
+
+def cmd_factor_report(cfg, a):
+    from app.research.factor_report import run_factor_report
+    t = run_factor_report(_ctx(cfg))
+    if t.empty:
+        print("Tidak ada data untuk laporan faktor")
+        return 0
+    print(f"Rank IC faktor vs {t.attrs.get('target')} (tanggal tidak tumpang tindih; |t| ≥ 2 ≈ signifikan)")
+    print(t.head(int(a.top)).round(4).to_string(index=False))
     return 0
 
 
@@ -427,6 +453,7 @@ def build_parser():
     s = sub.add_parser("sectors-update", help="isi sektor saham yang kosong (Yahoo), antrean berputar")
     s.add_argument("--limit", type=int, default=1000); s.set_defaults(fn=cmd_sectors_update)
     s = sub.add_parser("fundamentals-update"); s.add_argument("--tickers", help="AAPL,MSFT (default: incremental)"); s.add_argument("--date")
+    s.add_argument("--earnings-backfill", action="store_true", help="ambil riwayat 8-K laba untuk saham yang belum punya")
     s.set_defaults(fn=cmd_fundamentals_update)
     s = sub.add_parser("fundamentals-template"); s.add_argument("--out", default="data/raw/fundamentals/template.csv")
     s.set_defaults(fn=cmd_fundamentals_template)
@@ -435,6 +462,9 @@ def build_parser():
     s = sub.add_parser("valuation"); s.add_argument("--date"); s.add_argument("--no-save", action="store_true")
     s.add_argument("--estimated-pit", action="store_true", help="riset: estimasi tanggal publikasi (berlabel ESTIMATED_PIT, tidak disimpan)")
     s.set_defaults(fn=cmd_valuation)
+    s = sub.add_parser("factor-report", help="rank IC setiap fitur vs return residual 5H (riset faktor)")
+    s.add_argument("--top", type=int, default=40)
+    s.set_defaults(fn=cmd_factor_report)
     s = sub.add_parser("evaluate-modules", help="evaluasi historis 9 varian + IC faktor")
     s.add_argument("--estimated-pit", action="store_true"); s.add_argument("--no-save", action="store_true"); s.add_argument("--json", action="store_true")
     s.set_defaults(fn=cmd_evaluate_modules)

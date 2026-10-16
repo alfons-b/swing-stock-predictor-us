@@ -20,7 +20,7 @@ from app.config import artifacts_dir, embargo_days, get
 from app.features.builder import feature_columns
 from app.models.calibration import fit_calibrated
 from app.models.ensemble import SwingModel
-from app.models.evaluation import (classification_metrics, feature_ic_report, regression_metrics,
+from app.models.evaluation import (classification_metrics, feature_ic_report, rank_ic, regression_metrics,
                                         topk_trading_proxy)
 from app.models.factory import (available_models, make_binary_classifier, make_classifier, make_regressor,
                                      regressor_family_for)
@@ -100,6 +100,8 @@ def evaluate_fold_predictions(pred: pd.DataFrame, cfg: dict) -> dict:
                                                                   p[f"expected_return_{h}d"].to_numpy()).items()})
     out.update(topk_trading_proxy(p, "probability_bullish", f"y_ret_{h}d", get(cfg, "model.comparison_top_k", 5),
                                   round_trip_cost(cfg)))
+    if f"y_xs_{h}d" in p:                         # skill murni: rank IC P(bullish) vs return residual, per tanggal
+        out.update(rank_ic(p, "probability_bullish", f"y_xs_{h}d"))
     return out
 
 
@@ -118,7 +120,7 @@ def walk_forward_predict(df: pd.DataFrame, cfg: dict, classifier_names: list[str
         model = fit_swing_model(train, feats, cfg, classifier_names, with_aux=with_aux)
         ev = df[ev_m]
         p = model.predict(ev)
-        p = pd.concat([ev[KEEP_COLS + [c for c in ev.columns if c.startswith("y_ret") or c.startswith("y_m")]], p], axis=1)
+        p = pd.concat([ev[KEEP_COLS + [c for c in ev.columns if c.startswith(("y_ret", "y_m", "y_xs"))]], p], axis=1)
         p["fold"] = fold.name
         preds.append(p)
         metrics = evaluate_fold_predictions(p, cfg)

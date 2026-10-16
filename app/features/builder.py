@@ -62,6 +62,9 @@ def build_features(market: dict, cfg: dict) -> pd.DataFrame:
     sector = compute_sector_strength(df)
     df = df.merge(sector, on=["date", "sector"], how="left")
     df = add_relative_strength(df)
+    from app.features.alpha import add_market_relative
+    df = add_market_relative(df)
+    df = add_earnings_features(df, market.get("earnings"))
 
     df = merge_fundamentals(df, market.get("fundamentals"))
     df = merge_news(df, market.get("news"))
@@ -73,8 +76,15 @@ def build_features(market: dict, cfg: dict) -> pd.DataFrame:
         df["f_news_sent5"] = df["news_sent5"]
         df["f_news_count5"] = df["news_count5"]
     df = add_liquidity(df, cfg)
-    df = sanitize_features(df.replace([np.inf, -np.inf], np.nan))
+    from app.features.alpha import add_cross_sectional_ranks
+    df = add_cross_sectional_ranks(df.replace([np.inf, -np.inf], np.nan))
+    df = sanitize_features(df)
     return df.sort_values(["date", "ticker"]).reset_index(drop=True)
+
+
+def add_earnings_features(df: pd.DataFrame, events: pd.DataFrame | None) -> pd.DataFrame:
+    from app.features.earnings import earnings_features
+    return earnings_features(df, events)
 
 
 def add_liquidity(df: pd.DataFrame, cfg: dict) -> pd.DataFrame:

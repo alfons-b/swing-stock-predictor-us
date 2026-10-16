@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from app.database.db import Database
 
-SCHEMA_VERSION = 7
+SCHEMA_VERSION = 8   # 8: earnings_events (SEC 8-K Item 2.02)
 
 TYPES = {
     "sqlite": {"ID": "INTEGER PRIMARY KEY AUTOINCREMENT", "TEXT": "TEXT", "INT": "INTEGER", "REAL": "REAL",
@@ -168,6 +168,12 @@ TABLES = [
                          ("run_id", "TEXT", ""),
                          ("created_at", "TS", "")],
      [["forecast_date", "stock_id", "model_name"]], [["forecast_date"], ["model_name", "forecast_date"]]),
+    # Tanggal rilis laba (SEC 8-K Item 2.02) — point-in-time; ±4 baris/emiten/tahun (≈ 0,5 MB/tahun untuk 900 emiten).
+    ("earnings_events", [("id", "ID", ""), ("stock_id", "INT", "NOT NULL REFERENCES stocks(id)"),
+                         ("accession", "TEXT", "NOT NULL"), ("filing_date", "DATE", ""), ("accepted_at", "TEXT", ""),
+                         ("reaction_date", "DATE", "NOT NULL"), ("form", "TEXT", ""), ("source", "TEXT", ""),
+                         ("retrieved_at", "TS", "")],
+     [["stock_id", "accession"]], [["reaction_date"]]),
     ("schema_migrations", [("version", "INT", "PRIMARY KEY"), ("applied_at", "TS", "")], [], []),
 ]
 

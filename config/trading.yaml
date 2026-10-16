@@ -56,6 +56,12 @@ strategy:
   max_uncertainty: 0.15
   max_atr_pct: 0.08
   max_holding_days: 10
+  # Biaya: BUY hanya bila expected return 5H > cost_multiple × biaya pulang-pergi + min_net_expected_return.
+  cost_multiple: 1.0
+  min_net_expected_return: 0.0
+  # Earnings: tolak BUY bila perkiraan rilis laba berikutnya ≤ N hari KALENDER lagi (≈ max_holding_days hari bursa).
+  # 0 = nonaktif. Butuh data SEC (Variable SEC_USER_AGENT); tanpa data tidak memblokir.
+  earnings_blackout_calendar_days: 16
   entry_valid_days: 1
 
 portfolio:

@@ -130,6 +130,10 @@ def compute_stock_features(g: pd.DataFrame, cfg: dict) -> pd.DataFrame:
     out["f_gap_fill_rate"] = filled.astype(float).rolling(120, min_periods=20).sum() / \
         gap_up.astype(float).rolling(120, min_periods=20).sum().replace(0, np.nan)
 
+    # ---------- Alpha (f2): momentum 12-1/6-1, high 52 minggu, MAX, skew — app/features/alpha.py
+    from app.features.alpha import per_stock_alpha_features
+    out.update(per_stock_alpha_features(g))
+
     feats = pd.DataFrame(out, index=g.index)
     res = pd.concat([g, feats], axis=1)
     return res

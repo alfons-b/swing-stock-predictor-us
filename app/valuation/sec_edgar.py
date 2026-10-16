@@ -39,6 +39,8 @@ log = get_logger(__name__)
 
 TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
 FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik:010d}.json"
+SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik:010d}.json"
+SUBMISSIONS_PAGE_URL = "https://data.sec.gov/submissions/{name}"
 
 # field kanonik → tag us-gaap (urutan = prioritas). Nilai pertama yang tersedia di filing yang sama dipakai.
 DURATION_TAGS = {
@@ -369,6 +371,58 @@ class SECEdgarFundamentalProvider:
         if not facts:
             return []
         return statements_from_facts(t, facts, self.max_years, self.name)
+
+
+def earnings_from_submissions(blocks: list[dict], since: pd.Timestamp | None = None) -> pd.DataFrame:
+    """Blok `filings.recent` / halaman lama submissions SEC → 8-K berisi Item 2.02 (Results of Operations)."""
+    from app.features.earnings import reaction_date
+    rows = []
+    for b in blocks:
+        forms = b.get("form") or []
+        for i, f in enumerate(forms):
+            if f not in ("8-K", "8-K/A"):
+                continue
+            items = str((b.get("items") or [""] * len(forms))[i] or "")
+            if "2.02" not in items.split(","):
+                continue
+            rows.append({"accession": b["accessionNumber"][i], "filing_date": b["filingDate"][i],
+                         "accepted_at": (b.get("acceptanceDateTime") or [None] * len(forms))[i], "form": f})
+    df = pd.DataFrame(rows, columns=["accession", "filing_date", "accepted_at", "form"])
+    if df.empty:
+        return df.assign(reaction_date=pd.Series(dtype="datetime64[ns]"))
+    df["filing_date"] = pd.to_datetime(df["filing_date"])
+    if since is not None:
+        df = df[df["filing_date"] >= since]
+    df = df[df["form"] == "8-K"]                     # amandemen (8-K/A) bukan pengumuman baru
+    df["reaction_date"] = reaction_date(df["accepted_at"], df["filing_date"])
+    return df.drop_duplicates("reaction_date").sort_values("reaction_date").reset_index(drop=True)
+
+
+def _fetch_earnings(self, ticker: str, years: int = 7) -> pd.DataFrame:
+    """Riwayat tanggal rilis laba (8-K Item 2.02). Halaman lama diambil hanya sejauh yang dibutuhkan."""
+    t = normalize_ticker(ticker)
+    cik = self.cik_map().get(t)
+    if cik is None:
+        return pd.DataFrame()
+    sub = self._get_json(SUBMISSIONS_URL.format(cik=cik)) or {}
+    filings = sub.get("filings") or {}
+    blocks = [filings.get("recent") or {}]
+    since = pd.Timestamp.today().normalize() - pd.DateOffset(years=years)
+    for f in filings.get("files") or []:
+        try:
+            if pd.Timestamp(f.get("filingTo")) < since:
+                continue
+        except (TypeError, ValueError):
+            pass
+        page = self._get_json(SUBMISSIONS_PAGE_URL.format(name=f["name"]))
+        if page:
+            blocks.append(page)
+    ev = earnings_from_submissions(blocks, since)
+    ev.insert(0, "ticker", t)
+    return ev
+
+
+SECEdgarFundamentalProvider.get_earnings_events = _fetch_earnings
 
 
 def load_facts_file(path: str | Path) -> dict:

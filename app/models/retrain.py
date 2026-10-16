@@ -69,6 +69,10 @@ def evaluate_gates(metrics: dict, cfg: dict) -> list[str]:
 def retrain(cfg: dict, df: pd.DataFrame, storage, force: bool = False, compare: bool = True) -> dict:
     t0 = time.time()
     active = storage.active_version()
+    if active and not force and active.get("feature_version") != FEATURE_VERSION:
+        log.info("Model aktif %s memakai feature_version %s ≠ %s → retrain wajib", active["version"],
+                 active.get("feature_version"), FEATURE_VERSION)
+        force = True
     if active and not force:
         age = (pd.Timestamp.now(tz="UTC") - pd.Timestamp(active["promoted_at"] or active["created_at"])).days
         if age < int(get(cfg, "model.retrain_frequency_days", 30)):
@@ -96,9 +100,11 @@ def retrain(cfg: dict, df: pd.DataFrame, storage, force: bool = False, compare: 
         "logloss_mean": float(fm["log_loss"].mean()), "brier_mean": float(fm["brier_bullish"].mean()),
         "ece_bullish": vm.get("ece_bullish"), "positive_fold_ratio": float((fm["topk_mean_net_return"] > 0).mean()),
         "topk_net_mean": float(fm["topk_mean_net_return"].mean()),
-        "folds": fm[["name", "eval_start", "eval_end", "roc_auc_bullish", "log_loss", "brier_bullish",
-                     "topk_mean_net_return"]].to_dict(orient="records"),
-        "test_sealed": fm_test[["eval_start", "eval_end", "roc_auc_bullish", "log_loss", "topk_mean_net_return"]]
+        "rank_ic_mean": float(fm["rank_ic_mean"].mean()) if "rank_ic_mean" in fm else None,
+        "folds": fm[[c for c in ["name", "eval_start", "eval_end", "roc_auc_bullish", "rank_ic_mean", "rank_ic_tstat",
+                                 "log_loss", "brier_bullish", "topk_mean_net_return"] if c in fm]].to_dict(orient="records"),
+        "test_sealed": fm_test[[c for c in ["eval_start", "eval_end", "roc_auc_bullish", "rank_ic_mean", "log_loss",
+                                            "topk_mean_net_return"] if c in fm_test]]
         .to_dict(orient="records") if len(fm_test) else [],
         "model_comparison": ranking,
     }
@@ -136,7 +142,13 @@ def retrain(cfg: dict, df: pd.DataFrame, storage, force: bool = False, compare: 
         if h2h["candidate_logloss"] > h2h["active_logloss"] + tol:
             fails.append(f"holdout log loss {h2h['candidate_logloss']:.4f} lebih buruk dari model aktif {h2h['active_logloss']:.4f}")
     version = storage.save(prod, meta, status="CANDIDATE")
-    if fails:
+    incompatible_active = bool(active) and active.get("feature_version") != FEATURE_VERSION
+    if fails and incompatible_active:
+        # Model aktif memakai fitur/label versi lama dan TIDAK bisa dipakai lagi oleh kode baru → kandidat terbaik
+        # dijadikan BASELINE (sama seperti setup awal); health check menampilkan MODEL STATUS: WARN.
+        storage.promote(version, "BASELINE setelah perubahan feature_version (gerbang gagal: " + "; ".join(fails) + ")")
+        decision = "PROMOTED_AS_BASELINE"
+    elif fails:
         storage.reject(version, "; ".join(fails))
         decision = "REJECTED"
     else:

@@ -18,6 +18,7 @@ GitHub Actions (cron UTC / Run workflow) ─► python main.py daily ─► Aive
 ```
 
 **➡️ Panduan setup lengkap langkah demi langkah: [`docs/SETUP_GUIDE.md`](docs/SETUP_GUIDE.md).**
+**➡️ Audit quant & perbaikan v2 (label residual, fitur alpha, earnings SEC, uji signifikansi): [`docs/QUANT_V2.md`](docs/QUANT_V2.md).**
 
 ---
 
@@ -59,8 +60,9 @@ GitHub Actions (cron UTC / Run workflow) ─► python main.py daily ─► Aive
 | `python main.py scan` / `predict AAPL` | Scan seluruh universe / analisis satu saham |
 | `python main.py research AAPL` | STOCK RESEARCH REPORT: valuasi SEC, short flow FINRA, akumulasi, skor & ranking |
 | `python main.py rankings --ranking best_value` | Salah satu dari 9 ranking riset |
-| `python main.py fundamentals-update [--tickers AAPL,MSFT]` / `foreign-flow-update` / `valuation` | Modul riset terpisah |
-| `python main.py train [--if-due]` · `backtest [--folds N]` · `evaluate` · `evaluate-modules` | Model & evaluasi |
+| `python main.py fundamentals-update [--tickers AAPL,MSFT] [--earnings-backfill]` / `foreign-flow-update` / `valuation` | Modul riset terpisah (laporan SEC + tanggal rilis laba 8-K) |
+| `python main.py train [--if-due]` · `backtest [--folds N]` · `evaluate` · `evaluate-modules` | Model & evaluasi (backtest mencetak alpha, beta, CI Sharpe, Deflated Sharpe, verdict) |
+| `python main.py factor-report [--top N]` | Rank IC tiap fitur vs return residual 5 hari (bukti per sinyal) |
 | `python main.py models [--promote model_v00X]` | Daftar versi model / manual override |
 | `python main.py db-maintenance [--dry-run] [--full]` · `db-schema` | Retensi + VACUUM · tulis `sql/schema_postgres.sql` |
 | `python main.py challenger-train --model lstm\|gru\|tft\|arima_garch` | Model challenger (butuh `requirements-models.txt`) |
@@ -80,6 +82,12 @@ Exit code: 0 sukses · 1 gagal (Actions merah) · 2 config salah · 3 health kri
   bocor ke masa lalu. Baseline flow hari D hanya memakai data ≤ D−1.
 - **Tanpa look-ahead.** `tests/test_no_data_leakage.py` membuktikan fitur dari data penuh = fitur dari data yang
   dipotong di tanggal t.
+- **Label market-neutral.** Target = return residual (dikurangi beta × S&P 500, dibagi volatilitas) yang diranking
+  per tanggal — model memilih saham yang *mengungguli*, bukan yang sekadar ber-beta tinggi.
+- **Uji signifikansi.** Setiap backtest melaporkan alpha/beta, benchmark beta-matched, CI Sharpe bootstrap, dan
+  Deflated Sharpe Ratio yang memotong bukti sesuai jumlah konfigurasi yang dicoba.
+- **Earnings & biaya.** Tidak membuka posisi bila rilis laba diperkirakan jatuh dalam masa pegang, atau bila
+  ekspektasi return tidak menutup biaya pulang-pergi.
 - **Walk-forward + gerbang promosi** (AUC ≥ 0,52, std AUC ≤ 0,05, ECE ≤ 0,06, proxy trading positif ≥ 50% fold, tidak
   lebih buruk dari model aktif). Gagal → REJECTED; model pertama yang gagal menjadi BASELINE (`MODEL STATUS: WARN`).
 - **Freshness.** Data STALE → semua BUY menjadi WAIT dan headline `NO TRADE`.
