@@ -82,30 +82,50 @@ def constituents_from_table(df: pd.DataFrame, board: str) -> pd.DataFrame:
     sector = _pick(df.columns, "gics sector", "sector", "gics sector[1]")
     sub = _pick(df.columns, "gics sub-industry", "gics sub industry", "sub-industry", "industry")
     rows = []
+    def one(r, col):                                   # nama kolom ganda → ambil yang pertama
+        if col is None:
+            return None
+        v = r[col]
+        return v.iloc[0] if isinstance(v, pd.Series) else v
+
     for _, r in df.iterrows():
         try:
-            t = normalize_ticker(r[sym])
+            t = normalize_ticker(one(r, sym))
         except (ValueError, TypeError):
             continue
-        rows.append({"ticker": t, "name": r[name] if name else None, "sector": r[sector] if sector else None,
-                     "subsector": r[sub] if sub else None, "board": board})
+        rows.append({"ticker": t, "name": one(r, name), "sector": one(r, sector), "subsector": one(r, sub),
+                     "board": board})
     return pd.DataFrame(rows, columns=["ticker", "name", "sector", "subsector", "board"])
 
 
 def parse_wikipedia(html: str, board: str, min_rows: int) -> pd.DataFrame:
-    """Ambil tabel konstituen terbesar yang punya kolom Symbol/Ticker dan ≥ min_rows baris."""
+    """Ambil tabel KONSTITUEN: kolom Symbol/Ticker tunggal + kolom sektor/nama, ≥ min_rows baris.
+
+    Bug produksi 16 Okt 2026: halaman S&P 400 punya tabel riwayat perubahan indeks (Added/Removed, dua kolom
+    "Ticker") yang lebih panjang dari tabel konstituen. Versi lama memilih tabel TERPANJANG → tabel riwayat →
+    setiap baris gagal dibaca (dua kolom bernama sama) → 0 saham S&P 400 tanpa error, universe hanya 503.
+    Sekarang: tabel riwayat ditolak, tabel dengan sektor GICS diutamakan, dan hasil akhir < min_rows = error."""
     tables = pd.read_html(StringIO(html))
-    best = None
+    best, best_key = None, None
     for t in tables:
+        multi = isinstance(t.columns, pd.MultiIndex)
+        top = [str(c[0]).strip().lower() for c in t.columns] if multi else []
         cols = [str(c[-1] if isinstance(c, tuple) else c).strip().lower() for c in t.columns]
-        if not ({"symbol", "ticker", "ticker symbol"} & set(cols)):
-            continue
-        if best is None or len(t) > len(best):
-            best = t
+        n_sym = sum(c in ("symbol", "ticker", "ticker symbol") for c in cols)
+        if n_sym != 1 or {"added", "removed"} & set(top):
+            continue                                   # bukan tabel konstituen (mis. riwayat perubahan indeks)
+        has_sector = any("sector" in c for c in cols)
+        has_name = bool({"security", "company", "name"} & set(cols))
+        key = (has_sector, has_name, len(t))
+        if best_key is None or key > best_key:
+            best, best_key = t, key
     if best is None or len(best) < min_rows:
         raise ValueError(f"tabel konstituen {board} tidak ditemukan / terlalu pendek "
                          f"({0 if best is None else len(best)} < {min_rows} baris)")
-    return constituents_from_table(best, board)
+    out = constituents_from_table(best, board)
+    if len(out) < min_rows:
+        raise ValueError(f"konstituen {board} hanya {len(out)} ticker valid dari {len(best)} baris (< {min_rows})")
+    return out
 
 
 class USIndexUniverse:

@@ -186,6 +186,22 @@ class TestDataSourcesNotSilent(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             p.fetch(pd.Timestamp("2024-07-01"), pd.Timestamp("2024-07-31"))
 
+    def test_wikipedia_picks_constituents_not_changes_table(self):
+        # Halaman S&P 400: tabel riwayat (Added/Removed, dua kolom "Ticker") lebih panjang dari tabel konstituen.
+        from app.data.us_universe import parse_wikipedia
+        cons = "".join(f"<tr><td>T{i}</td><td>Co {i}</td><td>Industrials</td><td>Machinery</td></tr>" for i in range(5))
+        chg = "".join(f"<tr><td>2024-01-{i % 28 + 1:02d}</td><td>A{i}</td><td>Add {i}</td><td>R{i}</td><td>Rem {i}</td>"
+                      f"<td>x</td></tr>" for i in range(8))
+        html = (f"<table><tr><th>Symbol</th><th>Security</th><th>GICS Sector</th><th>GICS Sub-Industry</th></tr>{cons}"
+                "</table><table><tr><th rowspan=2>Date</th><th colspan=2>Added</th><th colspan=2>Removed</th>"
+                "<th rowspan=2>Reason</th></tr><tr><th>Ticker</th><th>Security</th><th>Ticker</th><th>Security</th>"
+                f"</tr>{chg}</table>")
+        out = parse_wikipedia(html, "S&P 400", 3)
+        self.assertEqual(out["ticker"].tolist(), [f"T{i}" for i in range(5)])
+        self.assertEqual(set(out["sector"]), {"Industrials"})
+        with self.assertRaises(ValueError):                                  # terlalu sedikit → error, bukan diam
+            parse_wikipedia(html, "S&P 400", 6)
+
     def test_wikipedia_user_agent_has_contact(self):
         import os
         from app.data.us_universe import user_agent

@@ -20,7 +20,7 @@ digabung, risiko pasar dinetralkan, dan biaya selalu dihitung.
 | 6 | **Tidak ada normalisasi cross-sectional.** Fitur skala mentah per saham | `app/features/technical.py` | Distribusi fitur bergeser antar regime → model tidak stabil |
 | 7 | **Anomali harga yang terdokumentasi tidak dipakai** | — | Momentum 12-1, pembalikan residual jangka pendek, jarak ke high 52 minggu, efek MAX, volatilitas idiosinkratik, PEAD |
 | 8 | **FINRA 0 baris tanpa error** | Data Health | HTTP 403 dianggap "belum terbit" → fitur short-flow diam-diam kosong |
-| 9 | **S&P 400 tidak terambil** (universe 503, bukan ±900) | Data Health | Wikipedia menolak User-Agent tanpa kontak dari IP datacenter |
+| 9 | **S&P 400 tidak terambil** (universe 503, bukan ±900) | Data Health: `wikipedia:sp400` sukses tetapi `{'S&P 500': 503}` | Parser memilih tabel terpanjang di halaman — di S&P 400 itu tabel *riwayat perubahan indeks* (dua kolom "Ticker"), sehingga 0 saham terbaca tanpa error |
 
 ## 2. Yang diubah
 
@@ -90,7 +90,9 @@ Semua jendela hanya ke belakang. Rank hanya di antara saham yang bisa ditransaks
 
 ### 2.8 Sumber data yang tidak lagi gagal diam-diam
 - FINRA: header mirip browser; 403 berulang tanpa satu pun sukses → error jelas di log dan Data Health.
-- Wikipedia: User-Agent memuat email dari `SEC_USER_AGENT` sesuai kebijakan Wikimedia, plus cadangan REST API.
+- Wikipedia: parser kini memilih tabel konstituen (kolom ticker tunggal + sektor GICS), menolak tabel riwayat perubahan,
+  dan error bila hasilnya < batas minimum. User-Agent memuat email dari `SEC_USER_AGENT`, plus cadangan REST API.
+  Setelah perbaikan ini universe kembali ±900 saham (S&P 500 + S&P 400) sesuai desain.
   Status per indeks (`universe_sp500`, `universe_sp400`) tampil di Data Health.
 
 ## 3. Cara membaca hasil setelah upgrade
