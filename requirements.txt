@@ -1,0 +1,25 @@
+# Inti
+numpy>=1.26
+pandas>=2.2
+scikit-learn>=1.6        # FrozenEstimator (kalibrasi time-based)
+scipy>=1.11
+pyyaml>=6.0
+joblib>=1.3
+requests>=2.31
+openpyxl>=3.1           # membaca daftar saham .xlsx (opsional)
+lxml>=5.0               # membaca tabel konstituen indeks (Wikipedia) via pandas.read_html
+tzdata>=2024.1           # wajib di Windows untuk zoneinfo("America/New_York")
+
+# Database production (PostgreSQL eksternal: Aiven — lihat docs/DATABASE_DECISION.md)
+psycopg[binary]>=3.1
+
+# Data provider
+yfinance>=0.2.40
+
+# Model utama (otomatis dilewati bila gagal dipasang)
+lightgbm>=4.3
+xgboost>=2.0
+catboost>=1.2
+
+# Test
+pytest>=8

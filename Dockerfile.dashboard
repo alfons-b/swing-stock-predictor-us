@@ -1,0 +1,15 @@
+# Web service dashboard (terpisah dari daily job, §45). Cocok untuk Render / Railway / Fly.io / Cloud Run.
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 TZ=America/New_York
+WORKDIR /app
+RUN apt-get update && apt-get install -y --no-install-recommends libgomp1 && rm -rf /var/lib/apt/lists/*
+COPY requirements.txt requirements-dashboard.txt ./
+RUN pip install --no-cache-dir -r requirements-dashboard.txt
+COPY app/ app/
+COPY config/ config/
+COPY dashboard/ dashboard/
+COPY .streamlit/config.toml .streamlit/config.toml
+RUN useradd -m web && chown -R web /app
+USER web
+EXPOSE 8501
+CMD ["sh", "-c", "streamlit run dashboard/app.py --server.port=${PORT:-8501} --server.address=0.0.0.0"]

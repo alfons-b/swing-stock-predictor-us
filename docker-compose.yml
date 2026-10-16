@@ -1,0 +1,24 @@
+# Development lokal: PostgreSQL lokal + job + dashboard. Production TIDAK memakai compose (GitHub Actions + Aiven PostgreSQL).
+services:
+  db:
+    image: postgres:16
+    environment: {POSTGRES_USER: swing, POSTGRES_PASSWORD: swing, POSTGRES_DB: swing}
+    ports: ["5432:5432"]
+    volumes: [pgdata:/var/lib/postgresql/data]
+  job:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://swing:swing@db:5432/swing
+    depends_on: [db]
+    command: ["daily"]
+    profiles: ["job"]
+  dashboard:
+    build: {context: ., dockerfile: Dockerfile.dashboard}
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql://swing:swing@db:5432/swing
+    ports: ["8501:8501"]
+    depends_on: [db]
+volumes:
+  pgdata:

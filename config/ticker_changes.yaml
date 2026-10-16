@@ -1,0 +1,5 @@
+# Perubahan kode saham: old → new. Histori tetap terhubung ke stock_id yang sama.
+# Contoh format (bukan data nyata):
+# changes:
+#   - {old: ABCD, new: WXYZ, effective_date: "2026-01-02"}
+changes: []

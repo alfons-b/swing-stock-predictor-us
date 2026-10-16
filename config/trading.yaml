@@ -1,0 +1,99 @@
+trading:
+  horizon: 5
+  minimum_rr: 1.5
+  risk_per_trade: 0.01
+
+regime:
+  thresholds: {strong_bull: 0.45, bull: 0.15, bear: -0.15, strong_bear: -0.45}
+  weights: {trend: 0.35, momentum: 0.25, breadth: 0.20, volatility: 0.20}
+  rules:
+    STRONG_BULL: {max_recommendations: 10, prob_add: 0.00, risk_mult: 1.00, allow_low_quality_breakout: true}
+    BULL:        {max_recommendations: 10, prob_add: 0.00, risk_mult: 1.00, allow_low_quality_breakout: true}
+    NEUTRAL:     {max_recommendations: 6,  prob_add: 0.02, risk_mult: 0.75, allow_low_quality_breakout: false}
+    BEAR:        {max_recommendations: 3,  prob_add: 0.04, risk_mult: 0.50, allow_low_quality_breakout: false}
+    STRONG_BEAR: {max_recommendations: 1,  prob_add: 0.08, risk_mult: 0.25, allow_low_quality_breakout: false}
+
+setups:
+  breakout_lookback: 20
+  volume_ratio_threshold: 1.5
+  pullback_tolerance: 0.015
+  support_tolerance: 0.02
+  adx_trend_min: 20
+  momentum_roc_min: 0.05
+  vcp_bbw_pct_max: 0.25
+  base_lookback: 40
+  base_max_range: 0.18
+  low_quality_breakout_score: 60
+
+strategy:
+  STOP_LOSS_ATR_MULTIPLIER: 1.5
+  stop_method_by_setup:
+    BREAKOUT: support
+    BREAKOUT_VOLUME: support
+    PULLBACK_UPTREND: swing_low
+    EMA20_PULLBACK: swing_low
+    SUPPORT_BOUNCE: support
+    TREND_CONTINUATION: atr
+    MOMENTUM_CONTINUATION: atr
+    VCP_BREAKOUT: support
+    HH_HL: swing_low
+    BASE_BREAKOUT: support
+    DEFAULT: atr
+  stop_percent: 0.06
+  swing_low_lookback: 10
+  stop_buffer_atr: 0.2
+  min_stop_distance_pct: 0.02
+  max_stop_distance_pct: 0.10
+  TP_MULTIPLIER: [1.5, 2.5]
+  tp_partial_fraction: 0.5
+  entry_zone_atr: 0.25
+  max_chase_pct: 0.02
+  MIN_RISK_REWARD: 1.5
+  # Ambang probabilitas RELATIF terhadap base rate training. Ambang absolut (mis. 0.65) hampir tidak
+  # pernah tercapai oleh model 3-kelas yang terkalibrasi jujur (base rate bullish ~25%) → nol trade.
+  MIN_CONFIDENCE: null
+  MIN_PROB_EDGE: 0.02
+  max_uncertainty: 0.15
+  max_atr_pct: 0.08
+  max_holding_days: 10
+  entry_valid_days: 1
+
+portfolio:
+  portfolio_value: ${PORTFOLIO_VALUE:-10000}       # USD
+  RISK_PER_TRADE: 0.01
+  max_position_pct: 0.20
+  max_open_positions: 5
+  board_lot: 1                     # pasar AS: tidak ada lot, minimal 1 saham
+
+scoring:
+  technical_weights:
+    trend: 0.20
+    momentum: 0.15
+    volume: 0.15
+    relative_strength: 0.15
+    setup_quality: 0.15
+    market_regime: 0.10
+    sector_strength: 0.05
+    liquidity: 0.05
+  final_weights: {technical: 0.45, ml: 0.45, fundamental: 0.05, sentiment: 0.05}
+  buy_score_min: 60
+  watchlist_score_min: 50
+  TOP_N_STOCKS: 10
+
+fundamental_filter:
+  enabled: true
+  max_debt_to_equity: 4.0
+  min_roe: -0.30
+  reject_negative_equity: true
+
+backtest:
+  # Asumsi konservatif untuk investor Indonesia via broker/aplikasi saham AS: komisi/platform + spread kurs ±0,10%
+  # per sisi. Jual juga kena SEC Section 31 ($20,60 per $1 juta = 0,00206% mulai 4 Apr 2026) + FINRA TAF (kecil).
+  # Broker AS bebas komisi tanpa konversi kurs: set BUY 0.0 dan SELL 0.00003.
+  TRANSACTION_FEE_BUY: 0.0010
+  TRANSACTION_FEE_SELL: 0.0011
+  SLIPPAGE_BPS: 5                  # saham S&P 500/400 likuid; spread jauh lebih sempit dari BEI
+  initial_capital: 10000           # USD
+  risk_free_rate: 0.0
+  same_bar_rule: stop_first
+  weekly_validation_folds: 2      # weekly workflow: walk-forward hanya N fold terakhir (hemat menit Actions)

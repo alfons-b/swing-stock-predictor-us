@@ -1,0 +1,5 @@
+# Dipakai Streamlit Community Cloud (mencari requirements di folder entrypoint dulu).
+# Isi = requirements.txt + paket dashboard (sama dengan requirements-dashboard.txt).
+-r ../requirements.txt
+streamlit>=1.35
+plotly>=5.20

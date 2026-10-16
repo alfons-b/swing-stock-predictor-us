@@ -1,0 +1,128 @@
+# Modul riset (pasar AS): fundamental SEC, valuasi, flow (FINRA short volume), akumulasi/distribusi, ranking terintegrasi.
+# Semua angka ASUMSI di bawah bukan data pasar — tinjau & perbarui berkala. Tidak ada secret di file ini.
+
+fundamentals:
+  # Provider dicoba berurutan (priority kecil = lebih dulu). Tanpa sumber yang AVAILABLE → valuasi INSUFFICIENT_DATA.
+  providers:
+    - name: sec_edgar              # laporan 10-K/10-Q resmi SEC (gratis, POINT-IN-TIME dari tanggal filed)
+      type: sec_edgar
+      enabled: true
+      priority: 1
+      user_agent: ${SEC_USER_AGENT:-}   # WAJIB menurut SEC: "Nama Anda email@domain.com" (GitHub Variable)
+      max_years: 6                 # periode laporan yang disimpan (cukup untuk histori valuasi 5 tahun)
+      max_requests_per_second: 8   # batas SEC 10/detik
+    - name: csv_fundamentals       # file kanonik data/raw/fundamentals/*.csv|xlsx (template: python main.py fundamentals-template)
+      type: csv
+      enabled: true
+      priority: 2
+      dir: ${FUNDAMENTAL_CSV_DIR:-data/raw/fundamentals}
+      point_in_time: true          # true hanya bila kolom publication_date diisi dari tanggal publikasi asli
+    - name: yahoo_fundamentals     # cadangan: snapshot terbaru; first_known_date = tanggal diambil (bukan PIT historis)
+      type: yahoo
+      enabled: ${YAHOO_ENABLED:-true}
+      priority: 3
+      suffix: ""
+  refresh_days: 7                  # saham dicek ulang paling cepat tiap N hari (incremental)
+  max_per_run: 150                 # maksimal saham per daily run (±900 saham tersegarkan ±1×/minggu)
+  price_currency: USD
+  # Estimasi tanggal publikasi bila tanggal asli tidak diketahui (CSV tanpa publication_date) — HANYA untuk riset
+  # backtest, diberi label ESTIMATED_PIT. Batas SEC: 10-K 60–90 hari, 10-Q 40–45 hari setelah akhir periode.
+  estimated_publication_lag_days: {FY: 90, Q: 45}
+  backtest_allow_estimated_pit: false
+  # Kurs untuk laporan non-USD (jarang di S&P 500/400). File CSV: date,currency,rate (1 unit mata uang = rate USD).
+  # Tanpa kurs → multiples & fair value saham tsb INSUFFICIENT_DATA (tidak ditebak).
+  fx_file: ${FX_FILE:-data/raw/fx/fx_rates.csv}
+  stale_after_days: 200            # laporan terbaru lebih tua dari ini → peringatan data basi (AS lapor kuartalan)
+
+valuation:
+  enabled: true
+  # ASUMSI — perbarui: yield US Treasury 10 tahun & equity risk premium AS. Bukan data real-time.
+  # Per 2026-10-15: UST 10Y 5,10% (YCharts); ERP implisit S&P 500 awal 2026 4,23% (Damodaran).
+  assumptions_as_of: "2026-10-16"  # tanggal asumsi terakhir ditinjau; health WARN bila > 180 hari
+  risk_free_rate: 0.051
+  equity_risk_premium: 0.0425
+  default_beta: 1.0
+  cost_of_debt_pre_tax: 0.065
+  tax_rate: 0.25                   # federal 21% + rata-rata pajak negara bagian
+  terminal_growth: 0.03            # nominal jangka panjang, konservatif di bawah pertumbuhan PDB nominal AS
+  max_explicit_growth: 0.15
+  explicit_years: 5
+  sensitivity: {discount_rate_step: 0.01, terminal_growth_step: 0.005}
+  min_peers: 5                     # perbandingan relatif butuh ≥ N emiten pembanding valid
+  min_history_months: 24           # valuasi historis (persentil multiple sendiri) butuh ≥ N bulan
+  history_years: 5
+  min_method_weight: 0.4           # bobot metode valid < ini → INSUFFICIENT_DATA
+  # bobot metode per tipe sektor (dinormalisasi ulang atas metode yang valid)
+  method_weights:
+    BANK: {justified_pb: 0.40, relative: 0.30, historical: 0.20, dividend: 0.10}
+    FINANCIAL: {justified_pb: 0.25, relative: 0.35, historical: 0.30, dividend: 0.10}
+    COMMODITY: {relative: 0.35, dcf: 0.20, historical: 0.30, dividend: 0.15}
+    PROPERTY: {relative: 0.40, historical: 0.35, dcf: 0.15, dividend: 0.10}
+    GENERAL: {dcf: 0.35, relative: 0.30, historical: 0.25, dividend: 0.10}
+    UNKNOWN: {relative: 0.40, historical: 0.40, dividend: 0.20}
+  status_thresholds: {deep_value: 0.40, undervalued: 0.20, overvalued: -0.15}
+  store_daily_days: 14             # valuation_results harian disimpan N hari; lebih lama hanya akhir bulan (±2,4 KB/emiten/hari)
+
+foreign_flow:
+  # Pasar AS tidak mempublikasikan foreign flow. Modul ini (nama internal dipertahankan) memakai padanan gratis:
+  # FINRA Reg SHO daily SHORT SALE VOLUME. NET_BUYING = tekanan short di bawah kebiasaan saham itu sendiri;
+  # NET_SELLING = di atasnya (detail: app/flows/foreign_flow_provider.py).
+  enabled: true
+  providers:
+    - name: finra_short_volume     # cdn.finra.org/equity/regsho/daily/CNMSshvolYYYYMMDD.txt — gratis, otomatis
+      type: finra
+      enabled: ${FINRA_ENABLED:-true}   # false untuk uji offline dengan data contoh
+      priority: 1
+      file_prefix: CNMS            # Consolidated NMS (gabungan semua fasilitas pelaporan FINRA)
+      backfill_trading_days: 300   # unduhan pertama: ±14 bulan (cukup untuk baseline 120 + jendela 60)
+    - name: csv_foreign_flow       # CSV kanonik: date,ticker,foreign_buy_shares,foreign_sell_shares[,total_volume_shares]
+      type: csv
+      enabled: true
+      priority: 2
+      dir: ${FOREIGN_FLOW_CSV_DIR:-data/raw/foreign_flow_csv}
+    - name: http_foreign_flow      # API pihak ketiga berlisensi (JSON). Butuh URL + key; mati bila kosong.
+      type: http
+      enabled: false
+      priority: 3
+      url: ${FOREIGN_FLOW_API_URL:-}
+      api_key: ${FOREIGN_FLOW_API_KEY:-}
+  # Rasio short FINRA struktural ±50% → fitur memakai simpangan dari baseline N hari bursa saham itu sendiri.
+  # Isi null bila memakai sumber CSV/API yang benar-benar beli/jual (tanpa bias struktural).
+  baseline_days: 120
+  lookback_days: 5                 # unduh ulang N hari terakhir tiap run (FINRA kadang memperbarui file)
+  min_coverage: 0.8                # cakupan hari bursa dalam jendela < 80% → INSUFFICIENT_DATA
+  windows: [5, 20, 60]
+
+broker_summary:
+  enabled: false                   # AS tidak punya broker summary publik; antarmuka tersedia (app/accumulation/broker_flow.py)
+  dir: ${BROKER_SUMMARY_DIR:-data/raw/broker_summary}
+
+accumulation:
+  enabled: true
+  window: 20
+  long_window: 60
+  rvol_window: 20
+  store_neutral: false             # simpan hanya sinyal non-netral ke accumulation_signals (hemat storage)
+  thresholds: {strong: 75, moderate: 60, weak_distribution: 40, strong_distribution: 25}
+
+research_scoring:
+  # Composite tiap ranking = rata-rata berbobot skor yang TERSEDIA (bobot dinormalisasi ulang); skor hilang ≠ 0.
+  min_weight_coverage: 0.6
+  rankings:
+    best_value: {value_score: 0.6, business_quality_score: 0.25, value_risk_inverse: 0.15}
+    quality_value: {value_score: 0.4, business_quality_score: 0.45, value_risk_inverse: 0.15}
+    accumulation: {accumulation_score: 0.6, distribution_risk_inverse: 0.2, liquidity_score: 0.2}
+    foreign_buying: {foreign_flow_score: 0.7, liquidity_score: 0.3}
+    swing_setup: {technical_setup_score: 0.45, ml_probability_score: 0.35, market_regime_score: 0.2}
+    value_accumulation: {value_score: 0.35, accumulation_score: 0.3, foreign_flow_score: 0.15, value_risk_inverse: 0.2}
+    value_swing: {value_score: 0.3, technical_setup_score: 0.3, ml_probability_score: 0.25, value_risk_inverse: 0.15}
+    momentum_flow: {technical_setup_score: 0.35, accumulation_score: 0.3, foreign_flow_score: 0.2, market_regime_score: 0.15}
+    integrated: {value_score: 0.2, business_quality_score: 0.15, accumulation_score: 0.15, foreign_flow_score: 0.1,
+                 technical_setup_score: 0.15, ml_probability_score: 0.15, value_risk_inverse: 0.05, distribution_risk_inverse: 0.05}
+  max_per_sector_buy: 2            # batas emiten per sektor di daftar BUY (konsentrasi)
+  max_pair_correlation: 0.8        # kandidat BUY dengan korelasi return 60H > ini terhadap kandidat lebih tinggi → WATCHLIST
+  correlation_window: 60
+
+research_retention:                # `python main.py db-maintenance` (juga otomatis saat database ≥ 85% kuota)
+  accumulation_signals_days: 365
+  foreign_flow_years: 2            # ±200 B/baris → ±45 MB/tahun untuk ±900 saham; laporan keuangan TIDAK pernah dihapus

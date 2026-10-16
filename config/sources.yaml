@@ -1,0 +1,41 @@
+# Provider dicoba berurutan berdasarkan priority; gagal → fallback ke provider berikutnya.
+market_data:
+  retry:
+    attempts: 3
+    backoff_seconds: 2           # 2s, 4s, 8s ...
+  batch_size: 50
+  action_workers: 4              # unduhan corporate action paralel (1 request per saham di Yahoo)
+  providers:
+    - name: yahoo_finance
+      type: yahoo
+      enabled: ${YAHOO_ENABLED:-true}
+      priority: 1
+      suffix: ""                 # saham AS di Yahoo tanpa akhiran (AAPL, BRK-B)
+      index_symbol: "^GSPC"      # S&P 500 — acuan regime pasar, relative strength, dan buy & hold
+    - name: csv
+      type: csv
+      enabled: true
+      priority: 99
+      dir: ${CSV_DATA_DIR:-data/raw/sample}
+
+universe:
+  # Urutan sumber daftar saham:
+  #   us_index  = konstituen indeks dari Wikipedia (S&P 500 + S&P MidCap 400 + sektor/sub-industri GICS);
+  #               bila Wikipedia gagal, S&P 500 dicoba dari dataset GitHub (datasets/s-and-p-500-companies)
+  #   csv_file  = universe.file (cadangan; repo ini sudah berisi snapshot S&P 500 di config/universe.csv)
+  sources: [us_index, csv_file]
+  # Indeks yang membentuk universe. ±900 saham (500 + 400) ≈ ukuran BEI ±920 emiten, muat di database 1 GB.
+  # Pilihan: sp500, sp400 (mid-cap), sp600 (small-cap, +600 saham → naikkan kuota database dulu), nasdaq100.
+  indexes: [sp500, sp400]
+  # Cadangan bila semua sumber online gagal. Boleh diganti file Anda sendiri (kolom minimal: ticker/Symbol).
+  # Kolom yang dikenali: Symbol | Security | GICS Sector | GICS Sub-Industry | Date added | Exchange | index
+  file: config/universe.csv
+  # Opsional: file sektor terpisah (kolom ticker/Symbol + sector/GICS Sector [+ subsector]). Mengalahkan sumber lain.
+  sectors_file: null
+  # Saham tanpa sektor yang dicek ke Yahoo per run (antrean berputar). Sumber indeks sudah membawa sektor GICS,
+  # jadi ini hanya untuk saham dari file tanpa kolom sektor.
+  sector_enrich_per_run: 100
+  ticker_changes_file: config/ticker_changes.yaml
+  # Tolak deaktivasi massal bila daftar baru < 80% jumlah aktif. Daftar dari sumber CADANGAN (subset) TIDAK PERNAH
+  # menonaktifkan saham — lihat app/data/us_universe.py.
+  min_ratio_to_deactivate: 0.8

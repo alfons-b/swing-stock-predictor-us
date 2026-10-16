@@ -1,0 +1,51 @@
+# Model challenger (docs/CHALLENGER_MODELS.md): LSTM, GRU, ARIMA-GARCH, TFT.
+# Berjalan TERPISAH dari model aktif: tidak memengaruhi keputusan BUY/WAIT, tabel sendiri, workflow sendiri.
+# Label, horizon, fold test, biaya, dan metrik memakai definisi yang SAMA dengan model aktif (config/model.yaml,
+# config/trading.yaml) agar perbandingan adil.
+
+challengers:
+  enabled: [arima_garch, lstm, gru, tft]
+  quantiles: [0.05, 0.1, 0.25, 0.5, 0.75, 0.9, 0.95]
+  min_history_days: 300          # emiten dengan histori lebih pendek tidak diprakirakan
+  target_clip: 0.5               # |log return 5H| dipotong (artefak corporate action / data rusak)
+  baseline_feature: f_roc10      # baseline momentum (dan kebalikannya sebagai baseline reversal)
+  predict_lookback_days: 400     # daily predict: fitur terpanjang ±270 hari (persentil vol S&P 500 250H) + jendela 60 + margin
+  artifacts_keep: 2              # artifact per model yang disimpan (selain terbaru); metrik disimpan selamanya
+
+  sequence:                      # dipakai LSTM, GRU, TFT
+    seq_len: 60
+    max_features: 64             # fitur f_* dengan cakupan tertinggi di data training (deterministik)
+    min_feature_coverage: 0.6
+    clip_z: 5.0
+
+  training:                      # dimensi untuk runner GitHub (CPU, 4 vCPU); dibatasi waktu, bukan hanya epoch
+    batch_size: 512
+    samples_per_epoch: 120000
+    val_samples: 40000
+    max_epochs: 12
+    min_epochs: 2
+    patience: 3
+    learning_rate: 0.001
+    weight_decay: 0.0001
+    grad_clip: 1.0
+    max_train_minutes: 20        # per fit; 3 fit per model (seleksi epoch, test, produksi)
+    refit_for_test: true         # latih ulang s/d embargo sebelum test dengan jumlah epoch terpilih
+    production_refit: true       # model produksi dilatih s/d label terakhir yang tersedia
+
+  lstm: {hidden: 64, layers: 2, dropout: 0.1}
+  gru: {hidden: 64, layers: 2, dropout: 0.1}
+  tft:
+    hidden: 32
+    heads: 4
+    dropout: 0.1
+    seq_len: 40                  # TFT lebih berat: jendela lebih pendek, batch & sampel per epoch lebih kecil
+    batch_size: 256              # aktivasi VSN ∝ batch × L × jumlah fitur × hidden (memori runner 16 GB)
+    samples_per_epoch: 60000
+    max_train_minutes: 25
+
+  arima_garch:
+    window: 750                  # hari bursa terakhir untuk estimasi parameter per emiten
+    orders: [[0, 0], [1, 0], [0, 1], [1, 1], [2, 0], [0, 2]]   # (p, q) ARMA atas log return (= ARIMA(p,1,q) atas log harga)
+    garch: {p: 1, q: 1, dist: t}
+    n_jobs: -1                   # proses paralel (joblib); -1 = semua CPU
+    min_obs: 250

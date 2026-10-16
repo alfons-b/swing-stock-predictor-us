@@ -1,0 +1,92 @@
+# Konfigurasi aplikasi. Nilai ${VAR:-default} diambil dari environment variable.
+environment: ${APP_ENV:-development}          # development | production
+
+project:
+  seed: 42
+  cache_dir: data/cache                         # cache lokal/runner (boleh hilang kapan saja)
+  log_level: ${LOG_LEVEL:-INFO}
+
+database:
+  # Production: DATABASE_URL = postgresql://... dari GitHub Secrets. Provider utama: Aiven for PostgreSQL Free
+  # (docs/DATABASE_DECISION.md). BUKAN Supabase/Neon yang dipakai proyek lain. Development/test: sqlite:///data/local.db
+  url: ${DATABASE_URL:-sqlite:///data/local.db}
+  batch_size: 2000
+  # auto = batas paket gratis provider yang terdeteksi dari host (Aiven 800 MB efektif dari 1 GB disk termasuk WAL,
+  # profil lain di app/database/providers.py; Postgres lain 1000 MB). Melewati batas = penulisan diblokir. Health check: WARN ≥ 80%, FAIL ≥ 95%.
+  size_limit_mb: ${DB_SIZE_LIMIT_MB:-auto}     # isi angka (MB) setelah upgrade paket
+  disk_limit_mb: ${DB_DISK_LIMIT_MB:-1024}     # ruang disk (untuk VACUUM FULL yang butuh salinan sementara)
+  size_warn_ratio: 0.80
+  auto_maintenance_ratio: 0.85                 # daily menjalankan retensi otomatis bila ukuran ≥ 85% batas
+
+retention:                                     # `python main.py db-maintenance` · workflow Database Maintenance (bulanan)
+  predictions_nonsignal_days: 120              # WAIT/AVOID lebih tua dihapus; BUY & WATCHLIST disimpan selamanya
+  reports_days: 60                             # report harian di database (salinan juga ada di artifact Actions)
+  system_logs_days: 90
+  price_history_years: 6                       # harus >= data.initial_history_years dan >= 5 (walk-forward)
+  model_artifacts_keep: 3                      # file model selain ACTIVE yang disimpan; registry & metrik tetap
+  scan_coverage_days: 120                      # status cakupan per emiten (ringkasan per run disimpan selamanya)
+  model_forecasts_days: 90                     # prakiraan harian model challenger (metrik evaluasi disimpan selamanya)
+
+coverage:                                      # app/scanner/coverage.py — status per emiten setiap scan
+  # "Board" (kolom board di tabel stocks) yang tidak pernah boleh BUY → EXCLUDED. Universe indeks berisi
+  # nama indeks (S&P 500 / S&P 400); saham dari file Anda bisa berlabel bursa. OTC/pink sheet tidak dimodelkan.
+  excluded_boards: ["OTC", "Pink", "Grey"]
+  min_coverage_pct: 80                         # di bawah ini run ditandai PARTIAL_SUCCESS + peringatan
+
+storage:
+  model_backend: ${MODEL_STORAGE:-auto}        # auto | local | database  (supabase: legacy, tidak dipakai)
+  report_backend: ${REPORT_STORAGE:-auto}      # auto | local | database  (supabase: legacy, tidak dipakai)
+  local_model_dir: models
+  local_report_dir: reports
+  local_output_dir: data/output
+  supabase_bucket: ${SUPABASE_BUCKET:-swing-artifacts}
+  # auto = database bila DATABASE_URL Postgres (persisten di database eksternal), local bila SQLite
+
+calendar:
+  timezone: America/New_York                   # jam bursa, BUKAN jam laptop (WIB)
+  data_ready_time: "18:00"                     # ET: pasar tutup 16:00; bar harian Yahoo & file FINRA final ±18:00
+  holidays_file: config/holidays.yaml
+  stale_after_trading_days: 2                  # DB tertinggal > N hari bursa dari ekspektasi = STALE
+
+scheduler:                                     # HANYA konfigurasi cloud workflow (GitHub Actions), bukan scheduler lokal
+  enabled: true
+  timezone: America/New_York
+  daily_cron_utc: "15 23 * * 1-5"              # 19:15 EDT / 18:15 EST Senin–Jumat = 06:15 WIB esok hari (salin ke daily.yml)
+  retrain_cron_utc: "0 14 * * 6"               # Sabtu 14:00 UTC = Sabtu 21:00 WIB
+  backtest_cron_utc: "0 16 * * 0"              # Minggu 16:00 UTC = Minggu 23:00 WIB
+
+pipeline:
+  scan_lookback_trading_days: 520              # daily hanya memuat ~2 tahun terakhir (cukup untuk SMA200 + 60D)
+  features_snapshot_days: 5                    # tabel features hanya menyimpan snapshot terbaru (hemat storage paket gratis)
+  max_failed_ticker_ratio: 0.5                 # > 50% ticker gagal → FAILED (bukan PARTIAL_SUCCESS)
+  require_active_model: true
+
+data:
+  incremental: true
+  # 6 th: cukup untuk 4 fold walk-forward (butuh ~4,7 th) dan muat di paket gratis (Aiven 1 GB disk):
+  # price_history ≈ 200 byte/baris → ~900 saham × 6 th ≈ 270 MB; × 10 th ≈ 450 MB (terlalu besar bersama tabel lain).
+  initial_history_years: 6
+  start_date: null                             # null = hari ini - initial_history_years
+  index_id: COMPOSITE
+  overlap_days: 0                              # 0 = hanya tanggal yang hilang
+  refetch_on_split: true
+  # Yahoo menyesuaikan split secara retroaktif. Bila close pertama yang baru berbeda > 20% dari close terakhir di
+  # database, histori ticker itu diunduh ulang (menangkap split 2:1, 3:2, 4:1, reverse split). Lonjakan harga asli
+  # (mis. earnings) hanya memicu unduh ulang yang tidak perlu — aman, hanya sedikit lebih lama.
+  split_refetch_jump: 0.20
+  full_actions_scan_days: 7      # setup/retrain tidak mengulang cek corporate action semua emiten bila sudah dalam N hari                       # provider split-adjusted (Yahoo): unduh ulang histori bila ada split baru
+
+quality:
+  max_abs_daily_return: 0.60                   # AS tanpa batas ARA/ARB: lonjakan earnings ±40% bisa nyata
+  suspension_min_zero_volume_days: 3
+  min_history_days: 250
+  adjust_dividends: false
+  min_price: 5                                 # USD — saham < $5 (penny stock) tidak dipindai
+
+liquidity:
+  window: 20
+  MIN_AVG_TRADING_VALUE: 10000000             # USD/hari (rata-rata 20H) — S&P 400 umumnya > $30 juta
+  MIN_MEDIAN_TRADING_VALUE: 7000000            # USD/hari (median 20H)
+  MIN_AVG_VOLUME: 200000                       # saham/hari
+  MIN_ACTIVE_TRADING_DAYS: 18
+  MAX_POSITION_PCT_OF_ADV: 0.05

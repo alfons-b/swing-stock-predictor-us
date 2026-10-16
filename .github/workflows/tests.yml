@@ -1,0 +1,62 @@
+# CI (§18, §58): lint → pytest (SQLite) → pytest (PostgreSQL sungguhan via service container).
+# Juga dipanggil oleh workflow daily/retrain/backtest sebagai gerbang: kode rusak tidak boleh jalan di production.
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - run: pip install ruff
+      - name: "Ruff - error nyata saja (syntax, nama tak terdefinisi, import rusak)"
+        run: ruff check --select E9,F63,F7,F82 .
+      - name: Compile semua modul
+        run: python -m compileall -q app dashboard main.py
+
+  pytest:
+    needs: lint
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+          POSTGRES_DB: swing_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U ci" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      TEST_POSTGRES_URL: postgresql://ci:ci@localhost:5432/swing_test
+      YAHOO_ENABLED: "false"
+      TZ: America/New_York
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: pytest (SQLite + PostgreSQL)
+        # Nama test yang gagal juga ditulis sebagai anotasi (::error::) agar terlihat di ringkasan run/PR
+        # tanpa membuka log lengkap.
+        run: |
+          set -o pipefail
+          pytest -q --maxfail=5 -rfE 2>&1 | tee pytest.log || {
+            grep -E "^(FAILED|ERROR) " pytest.log | head -20 | sed 's/^/::error title=pytest::/'
+            exit 1
+          }

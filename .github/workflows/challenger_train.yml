@@ -1,0 +1,80 @@
+# Latih & evaluasi 4 model challenger (ARIMA-GARCH, LSTM, GRU, TFT) — mingguan + manual.
+# Dataset dibangun SEKALI (job prepare) lalu dibagikan ke 4 job paralel lewat artifact Actions → hemat bandwidth database.
+# Menulis HANYA ke tabel challenger_models (model aktif, sinyal, dan pipeline harian tidak tersentuh).
+name: Challenger Train
+
+on:
+  schedule:
+    - cron: "37 11 * * 6"     # Sabtu 11:37 UTC = 18:37 WIB (setelah Fundamental Refresh; bursa tutup)
+  workflow_dispatch:
+    inputs:
+      models:
+        description: "Model (pisahkan koma): arima_garch,lstm,gru,tft"
+        required: false
+        default: "arima_garch,lstm,gru,tft"
+
+concurrency:
+  group: challenger-train
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    uses: ./.github/workflows/challenger_tests.yml
+
+  prepare:
+    needs: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    outputs:
+      models: ${{ steps.models.outputs.json }}
+    env:
+      APP_ENV: production
+      TZ: America/New_York
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DB_SIZE_LIMIT_MB: ${{ vars.DB_SIZE_LIMIT_MB }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - id: models
+        run: |
+          m="${{ inputs.models || 'arima_garch,lstm,gru,tft' }}"
+          echo "json=$(python -c "import json,sys; print(json.dumps([x.strip() for x in sys.argv[1].split(',') if x.strip()]))" "$m")" >> "$GITHUB_OUTPUT"
+      - run: python main.py health --no-provider
+      - run: python main.py challenger-prepare --out challenger_dataset.npz
+      - uses: actions/upload-artifact@v7
+        with:
+          name: challenger-dataset-${{ github.run_id }}
+          path: challenger_dataset.npz
+          retention-days: 1
+
+  train:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    strategy:
+      fail-fast: false
+      matrix:
+        model: ${{ fromJSON(needs.prepare.outputs.models) }}
+    env:
+      APP_ENV: production
+      TZ: America/New_York
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DB_SIZE_LIMIT_MB: ${{ vars.DB_SIZE_LIMIT_MB }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-challengers
+      - uses: actions/download-artifact@v7
+        with:
+          name: challenger-dataset-${{ github.run_id }}
+      - name: Train ${{ matrix.model }}
+        run: |
+          set -o pipefail
+          python main.py challenger-train --model ${{ matrix.model }} --dataset challenger_dataset.npz | tee train.txt
+          { echo "### ${{ matrix.model }}"; echo '```'; cat train.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

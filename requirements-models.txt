@@ -1,0 +1,5 @@
+# Dependensi model challenger (docs/CHALLENGER_MODELS.md). TIDAK dipasang oleh workflow produksi lama.
+# torch dipasang terpisah dari indeks CPU PyTorch (±200 MB; build CUDA dari PyPI > 2 GB):
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+statsmodels>=0.14
+arch>=7.0

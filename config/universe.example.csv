@@ -1,0 +1,41 @@
+ticker,name,sector,subsector,board
+ABBV,AbbVie,Health Care,Biotechnology,S&P 500
+ADBE,Adobe Inc.,Information Technology,Application Software,S&P 500
+AMD,Advanced Micro Devices,Information Technology,Semiconductors,S&P 500
+GOOGL,Alphabet Inc. (Class A),Communication Services,Interactive Media & Services,S&P 500
+AMZN,Amazon,Consumer Discretionary,Broadline Retail,S&P 500
+AAPL,Apple Inc.,Information Technology,"Technology Hardware, Storage & Peripherals",S&P 500
+BAC,Bank of America,Financials,Diversified Banks,S&P 500
+BRK-B,Berkshire Hathaway,Financials,Multi-Sector Holdings,S&P 500
+AVGO,Broadcom,Information Technology,Semiconductors,S&P 500
+CAT,Caterpillar Inc.,Industrials,Construction Machinery & Heavy Transportation Equipment,S&P 500
+CVX,Chevron Corporation,Energy,Integrated Oil & Gas,S&P 500
+CSCO,Cisco,Information Technology,Communications Equipment,S&P 500
+KO,Coca-Cola Company (The),Consumer Staples,Soft Drinks & Non-alcoholic Beverages,S&P 500
+COST,Costco,Consumer Staples,Consumer Staples Merchandise Retail,S&P 500
+XOM,ExxonMobil,Energy,Integrated Oil & Gas,S&P 500
+GE,GE Aerospace,Industrials,Aerospace & Defense,S&P 500
+HD,Home Depot (The),Consumer Discretionary,Home Improvement Retail,S&P 500
+INTC,Intel,Information Technology,Semiconductors,S&P 500
+JNJ,Johnson & Johnson,Health Care,Pharmaceuticals,S&P 500
+JPM,JPMorgan Chase,Financials,Diversified Banks,S&P 500
+LLY,Lilly (Eli),Health Care,Pharmaceuticals,S&P 500
+LIN,Linde plc,Materials,Industrial Gases,S&P 500
+MA,Mastercard,Financials,Transaction & Payment Processing Services,S&P 500
+MCD,McDonald's,Consumer Discretionary,Restaurants,S&P 500
+MRK,Merck & Co.,Health Care,Pharmaceuticals,S&P 500
+META,Meta Platforms,Communication Services,Interactive Media & Services,S&P 500
+MSFT,Microsoft,Information Technology,Systems Software,S&P 500
+NFLX,Netflix,Communication Services,Movies & Entertainment,S&P 500
+NKE,"Nike, Inc.",Consumer Discretionary,"Apparel, Accessories & Luxury Goods",S&P 500
+NVDA,Nvidia,Information Technology,Semiconductors,S&P 500
+ORCL,Oracle Corporation,Information Technology,Application Software,S&P 500
+PEP,PepsiCo,Consumer Staples,Soft Drinks & Non-alcoholic Beverages,S&P 500
+PFE,Pfizer,Health Care,Pharmaceuticals,S&P 500
+PG,Procter & Gamble,Consumer Staples,Personal Care Products,S&P 500
+CRM,Salesforce,Information Technology,Application Software,S&P 500
+TMO,Thermo Fisher Scientific,Health Care,Life Sciences Tools & Services,S&P 500
+UNH,UnitedHealth Group,Health Care,Managed Health Care,S&P 500
+V,Visa Inc.,Financials,Transaction & Payment Processing Services,S&P 500
+WMT,Walmart,Consumer Staples,Consumer Staples Merchandise Retail,S&P 500
+DIS,Walt Disney Company (The),Communication Services,Movies & Entertainment,S&P 500

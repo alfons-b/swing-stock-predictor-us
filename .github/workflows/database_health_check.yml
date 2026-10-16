@@ -1,0 +1,50 @@
+# Database Health Check — konektivitas, provider, ukuran vs kuota paket gratis, dan UJI TULIS (insert+delete).
+# Ringan (±1–2 menit, tanpa unduh data). Gagal (merah) bila database tidak bisa dihubungi, penulisan diblokir
+# (disk Aiven penuh / layanan di-power-off), atau ukuran ≥ 95% batas → GitHub mengirim notifikasi kegagalan workflow.
+# Laptop tidak terlibat.
+name: Database Health Check
+
+on:
+  schedule:
+    # GitHub cron selalu UTC dan bisa terlambat saat GitHub sibuk. 12:47 UTC = 19:47 WIB, Senin–Jumat:
+    # sebelum bursa AS buka (09:30 ET), cukup waktu memperbaiki sebelum Daily 23:15 UTC (06:15 WIB).
+    # Juga menjaga layanan Aiven Free tetap "aktif" (layanan tanpa aktivitas bisa di-power-off Aiven).
+    - cron: "47 12 * * 1-5"
+  workflow_dispatch:
+
+concurrency:            # tidak menunggu pipeline lain; dua health check bersamaan tidak berguna
+  group: database-health-check
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  health:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      APP_ENV: production
+      TZ: America/New_York
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DB_SIZE_LIMIT_MB: ${{ vars.DB_SIZE_LIMIT_MB }}          # kosong = otomatis dari provider
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Secret DATABASE_URL tersedia
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::Secret DATABASE_URL belum diset (Settings → Secrets and variables → Actions)"; exit 2
+          fi
+      - name: Health check (strict + uji tulis)
+        run: |
+          set -o pipefail
+          python main.py health --no-provider --strict | tee health.txt
+      - name: Ringkasan
+        if: always()
+        run: |
+          { echo '### Database health'; echo '```'; cat health.txt 2>/dev/null || echo "(tidak ada output)"; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

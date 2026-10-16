@@ -1,0 +1,60 @@
+# Fundamental Refresh mingguan — catch-up laporan keuangan + hitung ulang valuasi.
+#
+# Daily sudah menyegarkan fundamental secara incremental (fundamentals.max_per_run per run, tiap emiten paling
+# cepat tiap fundamentals.refresh_days). Workflow ini menuntaskan SEMUA emiten yang jatuh tempo dalam satu job
+# di akhir pekan, tanpa memperlambat daily. Laporan yang sama tidak disimpan ulang (versi baru hanya bila isi
+# berubah); emiten yang belum jatuh tempo dilewati. Fundamental usang ditandai di health check (FUNDAMENTALS).
+name: Fundamental Refresh
+
+on:
+  schedule:
+    - cron: "13 9 * * 6"     # Sabtu 09:13 UTC = 16:13 WIB (bursa AS tutup; setelah Daily Jumat yang mungkin terlambat)
+  workflow_dispatch:
+    inputs:
+      tickers:
+        description: "Opsional: AAPL,MSFT (paksa cek saham ini saja)"
+        required: false
+        default: ""
+
+concurrency:
+  group: market-pipeline     # tidak menulis database bersamaan dengan daily/retrain/backtest
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
+  refresh:
+    needs: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      APP_ENV: production
+      TZ: America/New_York
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DB_SIZE_LIMIT_MB: ${{ vars.DB_SIZE_LIMIT_MB }}
+      SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT }}                 # 'Nama email@domain.com' — wajib untuk SEC EDGAR
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python main.py health --no-provider
+      - name: Lengkapi sektor emiten (Yahoo, seluruh sisa antrean)
+        run: |
+          set -o pipefail
+          python main.py sectors-update --limit 1000 | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Perbarui laporan keuangan (incremental)
+        run: |
+          set -o pipefail
+          python main.py --set fundamentals.max_per_run=2000 fundamentals-update \
+            ${{ inputs.tickers && format('--tickers {0}', inputs.tickers) || '' }} | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Hitung ulang valuasi
+        run: |
+          set -o pipefail
+          python main.py valuation | tail -40 | tee -a "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,113 @@
+# Hari libur bursa NYSE / Nasdaq (tanggal YYYY-MM-DD, zona America/New_York).
+# 2025–2027 dicocokkan dengan kalender resmi NYSE (nyse.com/markets/hours-calendars, dicek 2026-10-16).
+# 2018–2024 dari aturan libur NYSE + penutupan khusus (hari berkabung nasional 2018-12-05 dan 2025-01-09).
+# WAJIB ditambah setiap tahun dari kalender resmi NYSE. Hari kerja tanpa data S&P 500 di database juga
+# otomatis dipelajari sebagai hari non-bursa. Hari setengah hari (tutup 13:00 ET) tetap hari bursa.
+holidays:
+  # 2018
+  - "2018-01-01"   # New Year's Day
+  - "2018-01-15"   # Martin Luther King Jr. Day
+  - "2018-02-19"   # Washington's Birthday
+  - "2018-03-30"   # Good Friday
+  - "2018-05-28"   # Memorial Day
+  - "2018-07-04"   # Independence Day
+  - "2018-09-03"   # Labor Day
+  - "2018-11-22"   # Thanksgiving Day
+  - "2018-12-05"   # National Day of Mourning (George H.W. Bush)
+  - "2018-12-25"   # Christmas Day
+  # 2019
+  - "2019-01-01"   # New Year's Day
+  - "2019-01-21"   # Martin Luther King Jr. Day
+  - "2019-02-18"   # Washington's Birthday
+  - "2019-04-19"   # Good Friday
+  - "2019-05-27"   # Memorial Day
+  - "2019-07-04"   # Independence Day
+  - "2019-09-02"   # Labor Day
+  - "2019-11-28"   # Thanksgiving Day
+  - "2019-12-25"   # Christmas Day
+  # 2020
+  - "2020-01-01"   # New Year's Day
+  - "2020-01-20"   # Martin Luther King Jr. Day
+  - "2020-02-17"   # Washington's Birthday
+  - "2020-04-10"   # Good Friday
+  - "2020-05-25"   # Memorial Day
+  - "2020-07-03"   # Independence Day
+  - "2020-09-07"   # Labor Day
+  - "2020-11-26"   # Thanksgiving Day
+  - "2020-12-25"   # Christmas Day
+  # 2021
+  - "2021-01-01"   # New Year's Day
+  - "2021-01-18"   # Martin Luther King Jr. Day
+  - "2021-02-15"   # Washington's Birthday
+  - "2021-04-02"   # Good Friday
+  - "2021-05-31"   # Memorial Day
+  - "2021-07-05"   # Independence Day
+  - "2021-09-06"   # Labor Day
+  - "2021-11-25"   # Thanksgiving Day
+  - "2021-12-24"   # Christmas Day
+  # 2022
+  - "2022-01-17"   # Martin Luther King Jr. Day
+  - "2022-02-21"   # Washington's Birthday
+  - "2022-04-15"   # Good Friday
+  - "2022-05-30"   # Memorial Day
+  - "2022-06-20"   # Juneteenth
+  - "2022-07-04"   # Independence Day
+  - "2022-09-05"   # Labor Day
+  - "2022-11-24"   # Thanksgiving Day
+  - "2022-12-26"   # Christmas Day
+  # 2023
+  - "2023-01-02"   # New Year's Day
+  - "2023-01-16"   # Martin Luther King Jr. Day
+  - "2023-02-20"   # Washington's Birthday
+  - "2023-04-07"   # Good Friday
+  - "2023-05-29"   # Memorial Day
+  - "2023-06-19"   # Juneteenth
+  - "2023-07-04"   # Independence Day
+  - "2023-09-04"   # Labor Day
+  - "2023-11-23"   # Thanksgiving Day
+  - "2023-12-25"   # Christmas Day
+  # 2024
+  - "2024-01-01"   # New Year's Day
+  - "2024-01-15"   # Martin Luther King Jr. Day
+  - "2024-02-19"   # Washington's Birthday
+  - "2024-03-29"   # Good Friday
+  - "2024-05-27"   # Memorial Day
+  - "2024-06-19"   # Juneteenth
+  - "2024-07-04"   # Independence Day
+  - "2024-09-02"   # Labor Day
+  - "2024-11-28"   # Thanksgiving Day
+  - "2024-12-25"   # Christmas Day
+  # 2025
+  - "2025-01-01"   # New Year's Day
+  - "2025-01-09"   # National Day of Mourning (Jimmy Carter)
+  - "2025-01-20"   # Martin Luther King Jr. Day
+  - "2025-02-17"   # Washington's Birthday
+  - "2025-04-18"   # Good Friday
+  - "2025-05-26"   # Memorial Day
+  - "2025-06-19"   # Juneteenth
+  - "2025-07-04"   # Independence Day
+  - "2025-09-01"   # Labor Day
+  - "2025-11-27"   # Thanksgiving Day
+  - "2025-12-25"   # Christmas Day
+  # 2026
+  - "2026-01-01"   # New Year's Day
+  - "2026-01-19"   # Martin Luther King Jr. Day
+  - "2026-02-16"   # Washington's Birthday
+  - "2026-04-03"   # Good Friday
+  - "2026-05-25"   # Memorial Day
+  - "2026-06-19"   # Juneteenth
+  - "2026-07-03"   # Independence Day
+  - "2026-09-07"   # Labor Day
+  - "2026-11-26"   # Thanksgiving Day
+  - "2026-12-25"   # Christmas Day
+  # 2027
+  - "2027-01-01"   # New Year's Day
+  - "2027-01-18"   # Martin Luther King Jr. Day
+  - "2027-02-15"   # Washington's Birthday
+  - "2027-03-26"   # Good Friday
+  - "2027-05-31"   # Memorial Day
+  - "2027-06-18"   # Juneteenth
+  - "2027-07-05"   # Independence Day
+  - "2027-09-06"   # Labor Day
+  - "2027-11-25"   # Thanksgiving Day
+  - "2027-12-24"   # Christmas Day

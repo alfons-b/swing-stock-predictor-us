@@ -1,0 +1,50 @@
+# Retraining terjadwal (§16) + kebijakan promosi (§15). Model baru hanya ACTIVE bila lolos gerbang
+# DAN tidak lebih buruk dari model aktif di data yang belum pernah dilihatnya. Bila tidak → REJECTED.
+name: Model Retrain
+
+on:
+  schedule:
+    - cron: "0 14 * * 6"     # Sabtu 14:00 UTC = Sabtu 21:00 WIB. Hanya melatih bila model aktif >= retrain_frequency_days.
+  workflow_dispatch:
+    inputs:
+      force:
+        description: "Paksa retrain walau model aktif masih baru"
+        type: boolean
+        default: false
+
+concurrency:
+  group: market-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
+  retrain:
+    needs: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      APP_ENV: production
+      TZ: America/New_York
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}               # Aiven PostgreSQL (BUKAN Neon/Supabase proyek lain); docs/SETUP_GUIDE.md
+      DB_SIZE_LIMIT_MB: ${{ vars.DB_SIZE_LIMIT_MB }}          # kosong = otomatis dari provider
+      MODEL_STORAGE: ${{ vars.MODEL_STORAGE || 'auto' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python main.py health --no-provider
+      - name: Ambil data terbaru + cek corporate action semua emiten
+        run: python main.py update-data --actions
+      - name: Retrain
+        run: python main.py train ${{ inputs.force && ' ' || '--if-due' }}
+      - name: Daftar versi model
+        if: always()
+        run: python main.py models | tee -a "$GITHUB_STEP_SUMMARY"

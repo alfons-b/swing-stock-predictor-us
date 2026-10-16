@@ -1,0 +1,46 @@
+# Backtest mingguan (§17): walk-forward (fold terbaru) + track record sinyal live, setelah biaya & slippage.
+name: Weekly Backtest
+
+on:
+  schedule:
+    - cron: "0 16 * * 0"     # Minggu 16:00 UTC = Minggu 23:00 WIB
+  workflow_dispatch:
+    inputs:
+      folds:
+        description: "Jumlah fold validasi terbaru (kosong = config)"
+        required: false
+        default: ""
+
+concurrency:
+  group: market-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
+  backtest:
+    needs: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      APP_ENV: production
+      TZ: America/New_York
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}               # Aiven PostgreSQL (BUKAN Neon/Supabase proyek lain); docs/SETUP_GUIDE.md
+      DB_SIZE_LIMIT_MB: ${{ vars.DB_SIZE_LIMIT_MB }}          # kosong = otomatis dari provider
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python main.py health --no-provider
+      - name: Backtest
+        run: python main.py backtest ${{ inputs.folds && format('--folds {0}', inputs.folds) || '' }} | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Evaluasi modul riset (9 varian + IC faktor, point-in-time)
+        continue-on-error: true      # data fundamental/flow historis bisa belum cukup → INSUFFICIENT_HISTORY, bukan gagal
+        run: python main.py evaluate-modules | tee -a "$GITHUB_STEP_SUMMARY"

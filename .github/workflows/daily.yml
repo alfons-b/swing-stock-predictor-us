@@ -1,0 +1,71 @@
+# Daily Market Pipeline (§5, §6). Otomatis (schedule) DAN manual (Actions → Daily Market Pipeline → Run workflow).
+# Laptop tidak terlibat: job hidup hanya selama run (START → PROCESS → SAVE → EXIT).
+name: Daily Market Pipeline
+
+on:
+  schedule:
+    # GitHub cron selalu UTC. 23:15 UTC Senin–Jumat = 19:15 EDT / 18:15 EST (setelah bursa AS tutup 16:00 ET
+    # dan data final ±18:00 ET) = 06:15 WIB keesokan paginya. Jadwal GitHub bisa terlambat beberapa jam; tanggal
+    # bursa yang diproses tetap dihitung dengan jam New York, jadi keterlambatan tidak mengubah hasil.
+    # Ubah di sini (nilai referensi: config/app.yaml → scheduler.daily_cron_utc).
+    - cron: "15 23 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      skip_ingest:
+        description: "Lewati unduh data (scan ulang dari database)"
+        type: boolean
+        default: false
+
+concurrency:            # jangan ada dua pipeline yang menulis database bersamaan
+  group: market-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
+  daily:
+    needs: tests        # kode yang gagal test tidak dijalankan di production
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      APP_ENV: production
+      TZ: America/New_York
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}               # Aiven PostgreSQL (BUKAN Neon/Supabase proyek lain); docs/SETUP_GUIDE.md
+      DB_SIZE_LIMIT_MB: ${{ vars.DB_SIZE_LIMIT_MB }}          # kosong = otomatis dari provider
+      SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT }}                 # 'Nama email@domain.com' — wajib untuk SEC EDGAR
+      MODEL_STORAGE: ${{ vars.MODEL_STORAGE || 'auto' }}
+      REPORT_STORAGE: ${{ vars.REPORT_STORAGE || 'auto' }}
+      PORTFOLIO_VALUE: ${{ vars.PORTFOLIO_VALUE || '10000' }}       # USD
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      NOTIFY_WEBHOOK_URL: ${{ secrets.NOTIFY_WEBHOOK_URL }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Health check (database wajib OK)
+        run: python main.py health --no-provider
+      - name: Daily pipeline
+        run: python main.py daily ${{ inputs.skip_ingest && '--skip-ingest' || '' }}
+      - name: Ringkasan run
+        if: always()
+        run: |
+          f=$(ls -t reports/daily_report_*.md 2>/dev/null | head -1)
+          if [ -n "$f" ]; then cat "$f" >> "$GITHUB_STEP_SUMMARY"; else echo "Tidak ada report (lihat log)." >> "$GITHUB_STEP_SUMMARY"; fi
+      - name: Upload report (salinan; sumber utama ada di database/cloud storage)
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: daily-report-${{ github.run_id }}
+          path: |
+            reports/
+            data/output/
+          retention-days: 30
+          if-no-files-found: ignore

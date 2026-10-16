@@ -1,0 +1,53 @@
+labels:
+  HORIZONS: [3, 5, 10]
+  SWING_HORIZON: 5
+  mode: fixed
+  bull_threshold: 0.03
+  bear_threshold: -0.03
+  vol_k: 0.75
+  tp_atr_mult: 2.0
+  sl_atr_mult: 1.5
+
+split:
+  mode: rolling                  # rolling = relatif terhadap tanggal data terakhir (cocok untuk retrain otomatis) | fixed
+  warmup_trading_days: 260       # dibuang dari awal training (indikator 200 hari belum stabil)
+  test_months: 6                 # periode test terbaru, tidak pernah dipakai tuning/seleksi
+  validation_folds: 4
+  fold_months: 6
+  min_train_months: 12           # data training minimal (setelah warmup) sebelum fold validasi pertama
+  # Histori yang dibutuhkan ≈ warmup (~1,1 th) + min_train (1 th) + folds×fold_months + test_months:
+  #   1 fold ≈ 3,2 th · 4 fold ≈ 4,7 th → gunakan data.initial_history_years >= 5
+  # mode fixed:
+  TRAIN_START: "2018-01-01"
+  VALIDATION_YEARS: [2022, 2023, 2024, 2025]
+  TEST_START: "2026-01-01"
+  TEST_END: null
+  embargo_days: null             # null = max(HORIZONS)
+
+model:
+  classifier: auto
+  regressor: auto
+  candidates: [logistic, random_forest, hist_gbm, lightgbm, xgboost, catboost]
+  calibration: sigmoid           # none | sigmoid (Platt) | isotonic
+  calibration_fraction: 0.15
+  ensemble_size: 2
+  max_train_rows: 400000
+  comparison_weights: {predictive: 0.30, trading: 0.35, calibration: 0.15, stability: 0.20}
+  comparison_top_k: 5
+  feature_ic_min_abs: 0.0
+  retrain_enabled: true
+  retrain_frequency_days: 30     # retrain workflow mingguan, tetapi hanya melatih bila model aktif lebih tua dari ini
+
+promotion:                       # kebijakan deploy model (§15)
+  min_auc: 0.52                  # rata-rata AUC walk-forward minimum
+  max_auc_std: 0.05              # stabilitas antar fold
+  max_ece: 0.06                  # kalibrasi
+  min_positive_fold_ratio: 0.5   # proxy trading positif di >= 50% fold
+  holdout_min_trading_days: 40   # perbandingan head-to-head di data setelah model aktif dilatih
+  max_logloss_degradation: 0.002 # kandidat boleh lebih buruk maksimal sebesar ini di holdout
+
+tuning:
+  MIN_PROB_EDGE: [0.02, 0.04, 0.06, 0.08]
+  buy_score_min: [55, 60, 65]
+  min_trades_per_year: 20
+  objective: sharpe

@@ -1,0 +1,45 @@
+# Pemeliharaan database (retensi + VACUUM). Mencegah kuota storage paket gratis terlampaui (Aiven Free 1 GB disk:
+# di atas kuota penulisan diblokir dan daily pipeline gagal). Daily juga menjalankan retensi otomatis bila
+# ukuran ≥ 85% batas; workflow ini menambah VACUUM bulanan dan opsi FULL.
+name: Database Maintenance
+
+on:
+  schedule:
+    - cron: "0 12 1 * *"     # tanggal 1 setiap bulan, 12:00 UTC = 19:00 WIB (jauh dari jadwal Daily)
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Hanya tampilkan yang akan dihapus"
+        type: boolean
+        default: true
+      full:
+        description: "VACUUM FULL (ukuran benar-benar turun; mengunci tabel sebentar)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: market-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  maintenance:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      APP_ENV: production
+      TZ: America/New_York
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DB_SIZE_LIMIT_MB: ${{ vars.DB_SIZE_LIMIT_MB }}          # kosong = otomatis dari provider (Aiven 800 MB)
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Maintenance
+        run: |
+          python main.py db-maintenance ${{ inputs.dry_run && '--dry-run' || '' }} ${{ inputs.full && '--full' || '' }} | tee -a "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,46 @@
+# First run (§66): inisialisasi database, universe, histori, validasi, fitur, model awal, backtest.
+# Jalankan SEKALI secara manual setelah secrets diset. Idempoten — aman diulang.
+name: Initial Setup
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_backtest:
+        description: "Lewati backtest awal (lebih cepat)"
+        type: boolean
+        default: false
+
+concurrency:
+  group: market-pipeline
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    uses: ./.github/workflows/tests.yml
+
+  setup:
+    needs: tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      APP_ENV: production
+      TZ: America/New_York
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}               # Aiven PostgreSQL (BUKAN Neon/Supabase proyek lain); docs/SETUP_GUIDE.md
+      DB_SIZE_LIMIT_MB: ${{ vars.DB_SIZE_LIMIT_MB }}          # kosong = otomatis dari provider
+      MODEL_STORAGE: ${{ vars.MODEL_STORAGE || 'auto' }}
+      SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT }}                 # 'Nama email@domain.com' — wajib untuk SEC EDGAR
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python main.py health --no-provider
+      - run: python main.py setup ${{ inputs.skip_backtest && '--skip-backtest' || '' }}
+      - name: Status akhir
+        if: always()
+        run: python main.py health | tee -a "$GITHUB_STEP_SUMMARY"

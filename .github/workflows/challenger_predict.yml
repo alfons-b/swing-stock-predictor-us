@@ -1,0 +1,36 @@
+# Prakiraan harian 4 model challenger — otomatis SETELAH Daily Market Pipeline selesai sukses (tanpa menebak jam,
+# karena jadwal GitHub bisa terlambat berjam-jam), atau manual. Menulis HANYA ke tabel model_forecasts.
+name: Challenger Predict
+
+on:
+  workflow_run:
+    workflows: ["Daily Market Pipeline"]
+    types: [completed]
+  workflow_dispatch:
+
+concurrency:
+  group: challenger-predict
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  predict:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      APP_ENV: production
+      TZ: America/New_York
+      DATABASE_URL: ${{ secrets.DATABASE_URL }}
+      DB_SIZE_LIMIT_MB: ${{ vars.DB_SIZE_LIMIT_MB }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup-challengers
+      - run: python main.py health --no-provider
+      - name: Prakiraan challenger
+        run: |
+          set -o pipefail
+          python main.py challenger-predict | tee predict.txt
+          { echo '### Prakiraan challenger'; echo '```'; cat predict.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"

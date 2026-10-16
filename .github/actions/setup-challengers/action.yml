@@ -1,0 +1,19 @@
+# Langkah instalasi bersama untuk workflow challenger (Python + dependensi inti + torch CPU + statsmodels/arch).
+name: Setup challenger environment
+description: Python 3.12, requirements.txt, torch (CPU), requirements-models.txt
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v7
+      with:
+        python-version: "3.12"
+        cache: pip
+        cache-dependency-path: |
+          requirements.txt
+          requirements-models.txt
+    - shell: bash
+      run: |
+        pip install -r requirements.txt
+        pip install torch --index-url https://download.pytorch.org/whl/cpu
+        pip install -r requirements-models.txt
+        python -c "import torch, statsmodels, arch; print('torch', torch.__version__, '| statsmodels', statsmodels.__version__, '| arch', arch.__version__)"
