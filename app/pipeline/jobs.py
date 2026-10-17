@@ -339,7 +339,12 @@ def job_features(ctx: AppContext) -> dict:
 
 
 def job_train(ctx: AppContext, force: bool = True, compare: bool = True) -> dict:
-    from app.models.retrain import retrain
+    from app.models.retrain import retrain, skip_reason
+    msg = skip_reason(ctx.cfg, ctx.models, force)
+    if msg:                                           # cek murah dulu — jangan bangun dataset untuk lalu dilewati
+        log.info(msg)
+        active = ctx.models.active_version() or {}
+        return {"decision": "SKIPPED", "reason": msg, "active_version": active.get("version")}
     with PipelineRun(ctx, "retrain") as run:
         df = build_dataset(ctx.cfg, ctx.repo, None, labels=True)
         out = retrain(ctx.cfg, df, ctx.models, force=force, compare=compare)

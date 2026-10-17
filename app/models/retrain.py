@@ -66,19 +66,32 @@ def evaluate_gates(metrics: dict, cfg: dict) -> list[str]:
     return fails
 
 
+def skip_reason(cfg: dict, storage, force: bool = False) -> str | None:
+    """Alasan retrain dilewati (None = harus retrain). Murah — dipanggil SEBELUM dataset dibangun, karena membangun
+    dataset berlabel ±900 saham × 6 tahun memakan puluhan menit (16 Okt 2026: 50 menit terbuang untuk run --if-due)."""
+    if force:
+        return None
+    active = storage.active_version()
+    if not active:
+        return None
+    if active.get("feature_version") != FEATURE_VERSION:
+        log.info("Model aktif %s memakai feature_version %s ≠ %s → retrain wajib", active["version"],
+                 active.get("feature_version"), FEATURE_VERSION)
+        return None
+    age = (pd.Timestamp.now(tz="UTC") - pd.Timestamp(active["promoted_at"] or active["created_at"])).days
+    if age < int(get(cfg, "model.retrain_frequency_days", 30)):
+        return (f"Model aktif {active['version']} baru berumur {age} hari (< retrain_frequency_days) — retrain dilewati. "
+                "Jalankan workflow Model Retrain dengan force=true untuk tetap melatih ulang.")
+    return None
+
+
 def retrain(cfg: dict, df: pd.DataFrame, storage, force: bool = False, compare: bool = True) -> dict:
     t0 = time.time()
     active = storage.active_version()
-    if active and not force and active.get("feature_version") != FEATURE_VERSION:
-        log.info("Model aktif %s memakai feature_version %s ≠ %s → retrain wajib", active["version"],
-                 active.get("feature_version"), FEATURE_VERSION)
-        force = True
-    if active and not force:
-        age = (pd.Timestamp.now(tz="UTC") - pd.Timestamp(active["promoted_at"] or active["created_at"])).days
-        if age < int(get(cfg, "model.retrain_frequency_days", 30)):
-            msg = f"Model aktif {active['version']} baru berumur {age} hari (< retrain_frequency_days) — retrain dilewati"
-            log.info(msg)
-            return {"decision": "SKIPPED", "reason": msg, "active_version": active["version"]}
+    msg = skip_reason(cfg, storage, force)
+    if msg:
+        log.info(msg)
+        return {"decision": "SKIPPED", "reason": msg, "active_version": active["version"]}
 
     if compare or get(cfg, "model.classifier", "auto") == "auto":
         comp = compare_models(df, cfg)

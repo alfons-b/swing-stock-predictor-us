@@ -118,6 +118,24 @@ class TestEarningsWatch(unittest.TestCase):
         self.assertEqual(earnings_watchlist(ev, "2025-12-01"), [])
 
 
+class TestRetrainSkipIsCheap(unittest.TestCase):
+    def test_if_due_skips_before_building_dataset(self):
+        from types import SimpleNamespace
+        from unittest import mock
+        from app import FEATURE_VERSION
+        import app.pipeline.jobs as jobs
+
+        class Models:
+            def active_version(self):
+                return {"version": "model_v003", "feature_version": FEATURE_VERSION,
+                        "promoted_at": pd.Timestamp.now(tz="UTC").isoformat(), "created_at": None}
+        ctx = SimpleNamespace(cfg=make_cfg(), models=Models())
+        with mock.patch.object(jobs, "build_dataset", side_effect=AssertionError("dataset tidak boleh dibangun")):
+            out = jobs.job_train(ctx, force=False)
+        self.assertEqual(out["decision"], "SKIPPED")
+        self.assertIn("force=true", out["reason"])
+
+
 class TestFilters(unittest.TestCase):
     def _run(self, earn_days, er):
         from app.strategy.filters import apply_filters
