@@ -53,7 +53,7 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Health check (database wajib OK)
         run: python main.py health --no-provider
-      - name: Alpha Vantage (kalender rilis, yield, berita, surprise EPS — kuota 25/hari)
+      - name: Alpha Vantage (kalender rilis, yield Treasury, surprise EPS — kuota 25/hari)
         continue-on-error: true      # data tambahan: gagal/kuota habis tidak boleh menghentikan scan
         timeout-minutes: 20
         run: python main.py av-update --mode daily

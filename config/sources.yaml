@@ -52,7 +52,8 @@ alpha_vantage:
   treasury_maturities: [10year, 2year, 3month]
   treasury_refresh_days: 2        # yield harian; diambil ulang bila data terakhir > N hari kalender
   fedfunds_refresh_days: 30
-  news_calls_per_run: 2           # NEWS_SENTIMENT: 2 jendela 12 jam × 1.000 artikel terbaru
+  news_calls_per_run: 0           # NEWS_SENTIMENT kini PREMIUM (terverifikasi 18 Okt 2026) → 0. Isi 2 bila paket berbayar.
+  premium_recheck_days: 30        # fungsi yang dijawab "premium endpoint" dilewati N hari (otomatis, hemat kuota)
   news_min_relevance: 0.25        # ticker dianggap "dibahas" bila relevance_score ≥ ini
   earnings_refresh_days: 120      # saham tanpa rilis baru dicek ulang paling cepat tiap N hari
   fresh_report_days: 10           # rilis laba ≤ N hari lalu tanpa data surprise → prioritas utama

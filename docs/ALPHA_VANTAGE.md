@@ -12,7 +12,7 @@ sedikit, jadi setiap request diarahkan ke data yang (1) tidak tersedia gratis da
 | `EARNINGS` | ±20/hari (sisa kuota) | EPS aktual vs estimasi analis per kuartal, seluruh riwayat dalam 1 request. Menjadi fitur `f_sue`, `f_eps_surprise_pct`, dan `f_beat_streak`. | PEAD: Bernard & Thomas (1989), Livnat & Mendenhall (2006); kombinasi dengan reaksi harga: Chan, Jegadeesh & Lakonishok (1996). |
 | `TREASURY_YIELD` 10Y/2Y/3M | ±1/hari | Risk-free valuasi otomatis (10Y menggantikan angka manual) dan kurva yield 10Y−3M di dashboard. | Kurva 10Y−3M: prediktor resesi klasik (Estrella & Mishkin 1998). |
 | `FEDERAL_FUNDS_RATE` | ±1/bulan | Konteks kebijakan moneter (dashboard). | — |
-| `NEWS_SENTIMENT` | 2/hari | Skor sentimen per ticker dari ±2.000 artikel terbaru. Mengisi komponen sentimen skor akhir yang sebelumnya selalu kosong di produksi. | Tetlock (2007); Heston & Sinha (2017). |
+| ~~`NEWS_SENTIMENT`~~ | 0 | **Premium** (terverifikasi di run 18 Okt 2026). Kode tetap ada: dengan paket berbayar set `news_calls_per_run: 2` dan skor sentimen per ticker mengisi komponen sentimen. | Tetlock (2007); Heston & Sinha (2017). |
 
 ### Urutan antrean surprise EPS
 1. **Segar**: saham yang baru rilis laba (8-K SEC atau kalender ≤ 10 hari) tetapi surprise kuartal itu belum ada.
@@ -22,6 +22,12 @@ sedikit, jadi setiap request diarahkan ke data yang (1) tidak tersedia gratis da
 
 Kuota dihitung dari tabel `api_usage` dalam **jendela 24 jam bergulir** di semua workflow, jadi aman apa pun jam
 reset Alpha Vantage. Respons "rate limit" (dikirim dengan HTTP 200) langsung menghentikan sisa panggilan run itu.
+Fungsi yang dijawab "premium endpoint" dicatat dan dilewati 30 hari, sehingga kuota tidak terbuang bila paket gratis
+berubah.
+
+Hasil run pertama (18 Okt 2026): 25 request = kalender 1 (847 dari 903 saham sudah punya tanggal rilis berikutnya),
+makro 4, berita 2 (premium → kini dilewati), surprise EPS 18 saham / 2.042 kuartal sejak ±1996 (94% punya estimasi
+analis, 100% punya jam rilis). Mulai run berikutnya: ±22 saham/hari → backfill penuh ±41 hari bursa.
 
 ## Kejujuran data (point-in-time)
 
@@ -30,7 +36,8 @@ reset Alpha Vantage. Respons "rate limit" (dikirim dengan HTTP 200) langsung men
 - **Kalender rilis** disimpan sebagai *log perubahan*: baris baru hanya bila tanggal atau estimasi berubah. Riwayat
   revisi konsensus mulai terkumpul sejak hari pertama. Hanya filter yang memakainya; fitur model
   `f_days_to_earn_est` tetap perkiraan SEC supaya training dan scan live konsisten.
-- **Berita**: sebelum pengumpulan dimulai, jumlah berita bernilai *tidak diketahui* (NaN), bukan 0.
+- **Berita** (bila kelak aktif): sebelum pengumpulan dimulai, jumlah berita bernilai *tidak diketahui* (NaN),
+  bukan 0.
 - **Treasury**: valuasi historis memakai yield yang sudah terbit pada tanggal itu (bukan nilai hari ini).
 
 ## Kapan fitur baru masuk model
@@ -38,8 +45,8 @@ reset Alpha Vantage. Respons "rate limit" (dikirim dengan HTTP 200) langsung men
 Pemilihan fitur hanya memakai fitur dengan **cakupan > 50%** baris training. Akibatnya:
 - `f_sue` dan kawan-kawan otomatis masuk setelah backfill menutup separuh universe (±25 hari bursa), pada retrain
   bulanan berikutnya, atau saat Anda menjalankan Model Retrain dengan `force=true`.
-- Fitur berita (`f_news_*`) baru bisa masuk setelah riwayatnya mencakup separuh periode training (bertahun-tahun).
-  Sampai saat itu berita hanya memengaruhi skor sentimen (bobot 5%) dan tampilan di dashboard.
+- Fitur berita (`f_news_*`) hanya relevan bila berita diaktifkan (paket berbayar), dan baru bisa masuk model setelah
+  riwayatnya mencakup separuh periode training.
 
 Cek kontribusinya di **Weekly Backtest → Factor IC**: `f_sue` dan `f_xs_sue` dengan |t| ≥ 2 berarti sinyalnya
 nyata di data Anda.
@@ -64,4 +71,4 @@ Perintah manual: `python main.py av-update [--mode daily|backfill] [--max-calls 
 - **Laporan keuangan**: SEC EDGAR sudah point-in-time dan gratis tanpa kuota.
 - **Opsi (implied volatility/skew)** dan **insider per saham**: butuh 1 request per saham per hari, jauh di atas
   kuota. Insider bisa diambil gratis dari SEC Form 4 bila kelak dibutuhkan.
-- **Intraday/realtime**: premium.
+- **Intraday/realtime, sentimen berita**: premium.

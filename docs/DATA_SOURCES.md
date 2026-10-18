@@ -17,7 +17,7 @@ GitHub Secrets/Variables.
 | Kalender rilis laba berikutnya + konsensus EPS | **Alpha Vantage** `EARNINGS_CALENDAR` | perkiraan dari pola 8-K SEC | 1 request/hari | Ya (log perubahan per `as_of`) |
 | EPS aktual vs estimasi (surprise) | **Alpha Vantage** `EARNINGS` | — (fitur NaN) | ±20 saham/hari dari kuota 25 | Ya (tanggal + jam rilis) |
 | Yield Treasury 10Y/2Y/3M, Fed funds | **Alpha Vantage** `TREASURY_YIELD`, `FEDERAL_FUNDS_RATE` | risk-free manual `config/research.yaml` | bila basi > 2 hari | Ya |
-| Berita + sentimen per ticker | **Alpha Vantage** `NEWS_SENTIMENT` | — (komponen sentimen kosong) | 2 request/hari | Ya (jam terbit; setelah 16:00 ET → hari berikutnya) |
+| Berita + sentimen per ticker | Alpha Vantage `NEWS_SENTIMENT` — **premium**, nonaktif (`news_calls_per_run: 0`) | — (komponen sentimen kosong) | — | Ya (jam terbit; setelah 16:00 ET → hari berikutnya) |
 | Hari libur bursa | `config/holidays.yaml` (NYSE 2018–2027) + dipelajari dari data `^GSPC` | — | perbarui tiap tahun | — |
 
 ## Detail dan keterbatasan per sumber

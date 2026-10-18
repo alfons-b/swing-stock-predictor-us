@@ -62,8 +62,8 @@ mengatakan apa pun tentang pasar saham AS.
   hari bila emiten menggeser jadwal; tetap cek kalender earnings untuk posisi besar.
 - Alpha Vantage gratis = 25 request/hari: backfill surprise EPS ±900 saham butuh ±45 hari bursa; pada puncak musim
   laporan (> 20 rilis/hari) sebagian surprise baru tercatat beberapa hari kemudian. Fitur surprise masuk model hanya
-  bila cakupannya > 50% baris training. Riwayat berita dan revisi konsensus baru terkumpul sejak integrasi
-  (17 Okt 2026), jadi belum bisa diuji di backtest — saat ini hanya memengaruhi skor sentimen (bobot 5%) dan tampilan.
+  bila cakupannya > 50% baris training. Riwayat revisi konsensus baru terkumpul sejak integrasi (18 Okt 2026), jadi
+  belum bisa diuji di backtest. Sentimen berita Alpha Vantage kini premium → komponen sentimen skor tetap kosong.
 - Bukan portofolio long-short: label residual memilih saham yang relatif lebih kuat, tetapi posisi tetap long-only
   sehingga return masih ikut beta pasar.
 - Pada data sintetis, lapisan ML tidak konsisten mengungguli aturan teknikal saja.

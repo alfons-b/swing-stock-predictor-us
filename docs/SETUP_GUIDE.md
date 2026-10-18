@@ -11,7 +11,7 @@ dashboard. Semua layanan yang dipakai **gratis** dan **tidak memakai Supabase ma
 | Data harga | Yahoo Finance | gratis |
 | Daftar saham + sektor | Wikipedia (S&P 500 + S&P MidCap 400) | gratis |
 | Laporan keuangan | SEC EDGAR | gratis |
-| Surprise EPS, kalender rilis laba, yield Treasury, berita (opsional) | Alpha Vantage (25 request/hari) | gratis |
+| Surprise EPS, kalender rilis laba, yield Treasury (opsional) | Alpha Vantage (25 request/hari) | gratis |
 | Flow harian | FINRA daily short sale volume | gratis |
 
 Perkiraan waktu: ±45–90 menit (sebagian besar menunggu workflow selesai).
@@ -97,7 +97,7 @@ Di repo: **Settings → Secrets and variables → Actions**.
 | Name | Value | Wajib |
 |---|---|---|
 | `DATABASE_URL` | Service URI Aiven dari Langkah 2.7 | **Ya** |
-| `ALPHAVANTAGE_API_KEY` | key gratis dari https://www.alphavantage.co/support/#api-key | Tidak, tapi **disarankan**: surprise EPS (sinyal PEAD), tanggal rilis laba pasti, yield Treasury, sentimen berita ([`ALPHA_VANTAGE.md`](ALPHA_VANTAGE.md)) |
+| `ALPHAVANTAGE_API_KEY` | key gratis dari https://www.alphavantage.co/support/#api-key | Tidak, tapi **disarankan**: surprise EPS (sinyal PEAD), tanggal rilis laba pasti, yield Treasury ([`ALPHA_VANTAGE.md`](ALPHA_VANTAGE.md)) |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | lihat Langkah 9 | Tidak |
 
 **Tab *Variables* → New repository variable:**

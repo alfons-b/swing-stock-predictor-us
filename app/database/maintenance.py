@@ -96,6 +96,7 @@ def _cutoffs(cfg: dict, today: pd.Timestamp) -> dict:
         "forecasts": (today - pd.Timedelta(days=int(r.get("model_forecasts_days", 180)))).strftime("%Y-%m-%d"),
         "news": (today - pd.Timedelta(days=int(r.get("news_items_days", 120)))).strftime("%Y-%m-%d"),
         "api_usage": (today - pd.Timedelta(days=int(r.get("api_usage_days", 400)))).strftime("%Y-%m-%d"),
+        "macro": (today - pd.DateOffset(years=int(r.get("macro_series_years", 20)))).strftime("%Y-%m-%d"),
     }
 
 
@@ -159,6 +160,9 @@ def _plan(cfg: dict, db: Database, today: pd.Timestamp) -> list[dict]:
         {"name": f"berita Alpha Vantage sebelum {c['news']}", "table": "news_items",
          "count": "SELECT COUNT(*) FROM news_items WHERE published_at < ?",
          "sql": "DELETE FROM news_items WHERE published_at < ?", "params": [c["news"]]},
+        {"name": f"seri makro sebelum {c['macro']}", "table": "macro_series",
+         "count": "SELECT COUNT(*) FROM macro_series WHERE date < ?",
+         "sql": "DELETE FROM macro_series WHERE date < ?", "params": [c["macro"]]},
         {"name": f"log kuota API sebelum {c['api_usage']}", "table": "api_usage",
          "count": "SELECT COUNT(*) FROM api_usage WHERE called_at < ?",
          "sql": "DELETE FROM api_usage WHERE called_at < ?", "params": [c["api_usage"]]},

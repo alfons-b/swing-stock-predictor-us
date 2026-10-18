@@ -190,6 +190,28 @@ class TestUpdate(unittest.TestCase):
         self.assertEqual(q[0], "CCC")
         self.assertEqual(sorted(q), ["AAA", "BBB", "BRK-B", "CCC"])
 
+    def test_premium_endpoint_is_remembered_and_skipped(self):
+        cfg = _cfg(treasury_maturities=[])
+        ctx = _ctx_with_stocks(cfg)
+        r = {"EARNINGS_CALENDAR": CAL, "FEDERAL_FUNDS_RATE": UST, "NEWS_SENTIMENT": PREMIUM, "EARNINGS": EARN}
+        first = self._run(cfg, ctx, r)
+        self.assertEqual(sum("khusus premium" in e for e in first["errors"]), 1)     # 2 jendela → hanya 1 request
+        log = []
+        second = self._run(cfg, ctx, r, today="2026-10-18", log=log)
+        self.assertNotIn("NEWS_SENTIMENT", [c["function"] for c in log])
+        self.assertIn("NEWS_SENTIMENT", second["premium_skipped"])
+
+    def test_macro_series_stored_incrementally(self):
+        cfg = _cfg()
+        ctx = _ctx_with_stocks(cfg)
+        from app.data.alpha_vantage_update import store_series
+        today = pd.Timestamp.today().normalize()
+        hist = pd.DataFrame({"series": "UST10YEAR", "date": pd.bdate_range(today - pd.DateOffset(years=30), today),
+                             "value": 4.0})
+        n1 = store_series(ctx.repo, hist)
+        self.assertLess(n1, len(hist) * 0.75)                                        # > 20 tahun dibuang
+        self.assertLessEqual(store_series(ctx.repo, hist), 10)                       # hanya overlap revisi
+
     def test_without_key_is_skipped_cleanly(self):
         cfg = make_cfg()
         cfg.setdefault("alpha_vantage", {})["api_key"] = ""

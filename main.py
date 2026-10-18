@@ -520,7 +520,7 @@ def build_parser():
     s = sub.add_parser("fundamentals-update"); s.add_argument("--tickers", help="AAPL,MSFT (default: incremental)"); s.add_argument("--date")
     s.add_argument("--earnings-backfill", action="store_true", help="ambil riwayat 8-K laba untuk saham yang belum punya")
     s.set_defaults(fn=cmd_fundamentals_update)
-    s = sub.add_parser("av-update", help="Alpha Vantage: kalender rilis, yield, berita, surprise EPS (kuota 25/hari)")
+    s = sub.add_parser("av-update", help="Alpha Vantage: kalender rilis, yield Treasury, surprise EPS (kuota 25/hari)")
     s.add_argument("--mode", choices=["daily", "backfill"], default="daily")
     s.add_argument("--max-calls", type=int, default=None, help="batasi jumlah request run ini")
     s.add_argument("--date")

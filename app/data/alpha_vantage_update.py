@@ -108,10 +108,20 @@ def load_calendar(repo) -> pd.DataFrame:
                             parse_dates=["fiscal_date_ending", "report_date", "as_of"]))
 
 
-def store_series(repo, df: pd.DataFrame) -> int:
+def store_series(repo, df: pd.DataFrame, max_years: int = 20, overlap_days: int = 10) -> int:
+    """Hanya baris baru (+ overlap kecil untuk revisi). Alpha Vantage mengirim SELURUH riwayat (sejak 1962) di setiap
+    request; menulis ulang ±16 ribu baris per seri tiap 2 hari memboroskan database."""
     if df is None or df.empty:
         return 0
     d = df.copy()
+    d["date"] = pd.to_datetime(d["date"])
+    d = d[d["date"] >= pd.Timestamp.today().normalize() - pd.DateOffset(years=max_years)]
+    for ser in d["series"].unique():
+        last, _ = latest_series(repo, ser)
+        if last is not None:
+            d = d[(d["series"] != ser) | (d["date"] > last - pd.Timedelta(days=overlap_days))]
+    if d.empty:
+        return 0
     d["date"] = _d(d["date"])
     d["source"], d["retrieved_at"] = SOURCE, _now()
     repo.db.upsert("macro_series", d[["series", "date", "value", "source", "retrieved_at"]], keys=["series", "date"],
@@ -132,6 +142,18 @@ def latest_series(repo, series: str, upto=None):
         q, p = q + " AND date <= ?", p + [pd.Timestamp(upto).strftime("%Y-%m-%d")]
     r = repo.db.query(q + " ORDER BY date DESC LIMIT 1", tuple(p))
     return (pd.Timestamp(r[0][0]), float(r[0][1])) if r else (None, None)
+
+
+def premium_blocked(repo, days: int = 30) -> set[str]:
+    """Fungsi yang dijawab 'premium endpoint' dalam N hari terakhir (paket gratis bisa berubah sewaktu-waktu;
+    NEWS_SENTIMENT menjadi premium per Okt 2026)."""
+    since = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(days=days)).isoformat()
+    try:
+        rows = repo.db.query("SELECT DISTINCT function FROM api_usage WHERE provider = ? AND status = 'PREMIUM_ONLY' "
+                             "AND called_at > ?", ("alpha_vantage", since))
+    except Exception:
+        return set()
+    return {r[0] for r in rows}
 
 
 def store_news(repo, df: pd.DataFrame) -> int:
@@ -226,16 +248,22 @@ def update_alpha_vantage(cfg: dict, repo, today=None, mode: str = "daily", clien
     def room() -> bool:
         return av.calls - start_calls < cap and av.remaining() > 0
 
+    premium = premium_blocked(repo, int(get(cfg, "alpha_vantage.premium_recheck_days", 30) or 30))
+    out["premium_skipped"] = sorted(premium)
+
     def step(name, fn):
         if not room():
+            return None
+        if name.split()[0] in premium:                    # endpoint premium: jangan buang kuota mencoba lagi
             return None
         try:
             return fn()
         except QuotaExhausted as e:
             out["stopped"] = f"kuota habis: {e}"
             raise
-        except PremiumOnly as e:
-            out["errors"].append(f"{name}: khusus premium ({e})"[:200])
+        except PremiumOnly:
+            premium.add(name.split()[0])
+            out["errors"].append(f"{name}: khusus premium — dilewati {get(cfg, 'alpha_vantage.premium_recheck_days', 30)} hari")
         except (AlphaVantageError, ValueError, KeyError) as e:
             out["errors"].append(f"{name}: {e}"[:200])
         return None

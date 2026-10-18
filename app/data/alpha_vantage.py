@@ -8,8 +8,8 @@ paling bernilai. Alokasi (config/sources.yaml → alpha_vantage):
                                  blackout earnings tidak lagi memakai perkiraan; konsensus EPS disimpan per hari
                                  (riwayat revisi analis terkumpul mulai sekarang).
   TREASURY_YIELD      ±1/hari    Imbal hasil 10Y/2Y/3M → risk-free valuasi otomatis + kurva yield (regime makro).
-  NEWS_SENTIMENT      2/hari     Skor sentimen per ticker dari ±2.000 artikel terbaru → komponen sentimen skor
-                                 (sebelumnya kosong di produksi).
+  NEWS_SENTIMENT      0          PREMIUM sejak 2026 (terverifikasi 18 Okt) — nonaktif; aktifkan via
+                                 news_calls_per_run bila paket berbayar. Fungsi premium otomatis dilewati 30 hari.
   EARNINGS            sisanya    EPS aktual vs estimasi analis per kuartal (riwayat penuh dalam 1 request) →
                                  standardized unexpected earnings (SUE), sinyal PEAD klasik (Bernard & Thomas 1989).
 
