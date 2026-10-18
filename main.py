@@ -66,6 +66,9 @@ def cmd_health(cfg, a):
         st, detail = write_probe(ctx.db)
         h["checks"]["DATABASE WRITE"] = {"status": st, "detail": detail}
     print(health_json(h) if a.json else format_health(h))
+    from app.utils.gha import annotate
+    annotate("Health", "; ".join(f"{k}: {v['status']} ({str(v.get('detail', ''))[:90]})"
+                                 for k, v in h["checks"].items()), "notice" if h["ok"] else "warning")
     if getattr(a, "strict", False):
         from app.pipeline.health import strict_failures
         bad = strict_failures(h)
@@ -80,6 +83,8 @@ def cmd_setup(cfg, a):
     out = job_setup(_ctx(cfg), skip_backtest=a.skip_backtest)
     tr = out["train"]
     print(f"Setup selesai. Model {tr['version']}: {tr['decision']} {('— ' + '; '.join(tr['reasons'])) if tr.get('reasons') else ''}")
+    from app.utils.gha import annotate
+    annotate("Setup: model", f"{tr['version']} {tr['decision']} " + "; ".join(tr.get("reasons") or []))
     ing = out["ingest"]["ingestion"]
     print(f"Data: +{ing['rows_inserted']} baris, {ing['stocks_processed']} emiten, gagal {ing['stocks_failed']}")
     if "backtest" in out:
@@ -95,6 +100,12 @@ def cmd_daily(cfg, a):
     s = job_daily(_ctx(cfg), skip_ingest=a.skip_ingest)
     _print_summary(s)
     print(f"\nRun {s['run_id']}: {s['run_status']}")
+    from app.utils.gha import annotate
+    rec = ", ".join(f"{r['ticker']}({r['decision']})" for r in (s.get("recommendations") or [])[:8]) or "-"
+    cov = s.get("coverage") or {}
+    annotate("Daily", f"{s['date']} {s['run_status']} | regime {s['market_regime']} | model {s['model_version']} | "
+                      f"{s['decision_counts']} | cakupan {cov.get('processed')}/{cov.get('total_universe')} | {s['headline']} | "
+                      f"rekomendasi: {rec}")
     return 0
 
 
@@ -128,9 +139,15 @@ def cmd_train(cfg, a):
     out = job_train(_ctx(cfg), force=not a.if_due, compare=not a.skip_compare)
     if out["decision"] == "SKIPPED":
         print(out["reason"])
+        from app.utils.gha import annotate
+        annotate("Retrain", out["reason"])
         return 0
     m = out["metrics"]
     print(f"{out['version']}: {out['decision']} (sebelumnya aktif: {out['previous_active']})")
+    from app.utils.gha import annotate
+    annotate("Retrain", f"{out['version']} {out['decision']} | {m['classifiers']} | AUC {m['auc_mean']:.3f}±{m['auc_std']:.3f} "
+                        f"| rank IC {m.get('rank_ic_mean') or float('nan'):.4f} | fitur {m.get('n_features')} | "
+                        + ("; ".join(out["reasons"]) or "semua gerbang lolos"))
     print(f"Model {m['classifiers']} | AUC {m['auc_mean']:.3f} ± {m['auc_std']:.3f} | ECE {m['ece_bullish']:.3f} | "
           f"fold proxy positif {m['positive_fold_ratio']:.0%}")
     if m.get("head_to_head"):
@@ -164,6 +181,19 @@ def cmd_backtest(cfg, a):
             print(f"  Bukti statistik: {sig['verdict']}")
             if sig.get("beta") is not None:
                 print(f"  Pembanding adil (beta {sig['beta']} × S&P 500): {sig.get('beta_matched_index_return', 0):+.1%}")
+    from app.utils.gha import annotate
+    for k, v in out.items():
+        if k == "factor_ic_top" or not v:
+            continue
+        s, sig = v["strategy"], (v["strategy"].get("significance") or {})
+        annotate(f"Backtest {k}", f"{s.get('start')}..{s.get('end')} return {s.get('total_return', 0):+.1%}, Sharpe "
+                                  f"{s.get('sharpe', 0):.2f}, trades {s.get('number_of_trades', 0)}, MaxDD "
+                                  f"{s.get('max_drawdown', 0):.1%} | beta-matched {sig.get('beta_matched_index_return', 0) or 0:+.1%} "
+                                  f"| {sig.get('verdict', 'n/a')}")
+    if out.get("factor_ic_top"):
+        annotate("Factor IC (top 12, |t|)", " | ".join(
+            f"{r['feature']} IC {r['ic_mean']:+.4f} t {r['ic_tstat']:+.2f} 12m {r.get('ic_mean_12m') or float('nan'):+.4f}"
+            for r in out["factor_ic_top"][:12]))
     if out.get("factor_ic_top"):
         print("\nRank IC faktor vs return residual 5H (|t| ≥ 2 ≈ signifikan):")
         for r in out["factor_ic_top"][:15]:
@@ -359,6 +389,37 @@ def cmd_fundamentals_update(cfg, a):
     return 0
 
 
+def cmd_av_update(cfg, a):
+    """Alpha Vantage: kalender rilis, yield Treasury, berita, surprise EPS — dalam batas kuota 24 jam."""
+    from app.data.alpha_vantage_update import update_alpha_vantage
+    from app.utils.gha import annotate
+    ctx = _ctx(cfg)
+    try:
+        out = update_alpha_vantage(cfg, ctx.repo, _as_of(cfg, a) or pd.Timestamp.today(), mode=a.mode,
+                                   max_calls=a.max_calls)
+    except Exception as e:  # data tambahan tidak boleh menggagalkan pipeline utama
+        msg = f"{type(e).__name__}: {e}"[:300]
+        print("Alpha Vantage gagal: " + msg)
+        annotate("Alpha Vantage", "GAGAL: " + msg, "warning")
+        return 0
+    if not out["configured"]:
+        print("Alpha Vantage dilewati: GitHub Secret ALPHAVANTAGE_API_KEY belum diset")
+        annotate("Alpha Vantage", "dilewati — secret ALPHAVANTAGE_API_KEY belum diset", "warning")
+        return 0
+    line = (f"{out['calls']} request ({out['mode']}) | kalender +{out['calendar_rows']} baris"
+            f" (universe {out.get('calendar_universe', '-')}) | makro +{out['macro_rows']} | berita +{out['news_rows']} | "
+            f"surprise EPS {out['earnings_tickers']} saham (+{out['earnings_rows']} kuartal), cakupan "
+            f"{out.get('surprise_coverage')} | mutu: {out.get('earnings_with_estimate', 0)}/{out['earnings_rows']} kuartal ber-estimasi, "
+            f"{out.get('earnings_report_time', 0)} ber-jam rilis | kuota sisa {out.get('budget_after')}"
+            + (f" | berhenti: {out['stopped']}" if out.get("stopped") else ""))
+    print(line)
+    for e in out["errors"][:10]:
+        print("  ! " + e)
+    annotate("Alpha Vantage", line + (" | error: " + " / ".join(out["errors"][:5]) if out["errors"] else ""),
+             "warning" if out["errors"] and not out["calls"] else "notice")
+    return 0
+
+
 def cmd_fundamentals_template(cfg, a):
     from app.valuation.fundamental_provider import csv_template
     out = resolve_path(cfg, a.out)
@@ -380,6 +441,10 @@ def cmd_valuation(cfg, a):
     from app.valuation.valuation_report import run_valuation, save_valuations
     ctx = _ctx(cfg)
     d = _as_of(cfg, a) or ctx.repo.max_price_date()
+    from app.data.alpha_vantage_update import apply_market_rates
+    src = apply_market_rates(cfg, ctx.repo, d)
+    if src:
+        print(f"Risk-free {cfg['valuation']['risk_free_rate']:.2%} dari {src}")
     df = run_valuation(cfg, ctx.repo, d, use_estimated=a.estimated_pit)
     if not a.no_save and not a.estimated_pit:
         save_valuations(ctx.repo, df)
@@ -455,6 +520,11 @@ def build_parser():
     s = sub.add_parser("fundamentals-update"); s.add_argument("--tickers", help="AAPL,MSFT (default: incremental)"); s.add_argument("--date")
     s.add_argument("--earnings-backfill", action="store_true", help="ambil riwayat 8-K laba untuk saham yang belum punya")
     s.set_defaults(fn=cmd_fundamentals_update)
+    s = sub.add_parser("av-update", help="Alpha Vantage: kalender rilis, yield, berita, surprise EPS (kuota 25/hari)")
+    s.add_argument("--mode", choices=["daily", "backfill"], default="daily")
+    s.add_argument("--max-calls", type=int, default=None, help="batasi jumlah request run ini")
+    s.add_argument("--date")
+    s.set_defaults(fn=cmd_av_update)
     s = sub.add_parser("fundamentals-template"); s.add_argument("--out", default="data/raw/fundamentals/template.csv")
     s.set_defaults(fn=cmd_fundamentals_template)
     s = sub.add_parser("foreign-flow-update"); s.add_argument("--full", action="store_true"); s.add_argument("--date")

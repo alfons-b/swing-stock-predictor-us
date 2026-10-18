@@ -24,9 +24,16 @@ def _ic_series(sub: pd.DataFrame, feature: str, target: str, min_names: int) -> 
     d = d[cnt >= min_names]
     if d.empty:
         return pd.Series(dtype=float)
+    # Fitur yang konstan per tanggal (regime pasar, indeks) tidak punya variasi cross-sectional → korelasi tidak
+    # terdefinisi. Tanpa penyaringan ini sisa pembulatan (IC ±1e-17) menghasilkan t-stat palsu yang besar.
+    var = d.groupby("date")[feature].transform("nunique") > 2
+    d = d[var]
+    if d.empty:
+        return pd.Series(dtype=float)
     r = d.groupby("date")[[feature, target]].rank(pct=True)
     r["date"] = d["date"]
-    return r.groupby("date").apply(lambda g: g[feature].corr(g[target]), include_groups=False).dropna()
+    ic = r.groupby("date").apply(lambda g: g[feature].corr(g[target]), include_groups=False).dropna()
+    return ic[ic.abs() > 1e-9]
 
 
 def _stats(ic: pd.Series) -> dict:

@@ -13,6 +13,11 @@ GitHub Secrets/Variables.
 | Corporate action (split/dividen) | Yahoo | — | tiap Daily + scan penuh mingguan | Ya |
 | Laporan keuangan | **SEC EDGAR** companyfacts (10-K/10-Q) | CSV kanonik → snapshot Yahoo | incremental 150 saham/hari + Fundamental Refresh Sabtu | **Ya** (tanggal `filed`) |
 | Flow harian | **FINRA** Reg SHO daily short sale volume (CNMS) | CSV/API vendor | tiap Daily | Ya (terbit ≤ 18:00 ET hari D) |
+| Tanggal rilis laba (8-K Item 2.02) | **SEC EDGAR** submissions | — | Fundamental Refresh + pantauan harian | **Ya** (acceptanceDateTime) |
+| Kalender rilis laba berikutnya + konsensus EPS | **Alpha Vantage** `EARNINGS_CALENDAR` | perkiraan dari pola 8-K SEC | 1 request/hari | Ya (log perubahan per `as_of`) |
+| EPS aktual vs estimasi (surprise) | **Alpha Vantage** `EARNINGS` | — (fitur NaN) | ±20 saham/hari dari kuota 25 | Ya (tanggal + jam rilis) |
+| Yield Treasury 10Y/2Y/3M, Fed funds | **Alpha Vantage** `TREASURY_YIELD`, `FEDERAL_FUNDS_RATE` | risk-free manual `config/research.yaml` | bila basi > 2 hari | Ya |
+| Berita + sentimen per ticker | **Alpha Vantage** `NEWS_SENTIMENT` | — (komponen sentimen kosong) | 2 request/hari | Ya (jam terbit; setelah 16:00 ET → hari berikutnya) |
 | Hari libur bursa | `config/holidays.yaml` (NYSE 2018–2027) + dipelajari dari data `^GSPC` | — | perbarui tiap tahun | — |
 
 ## Detail dan keterbatasan per sumber
@@ -54,6 +59,12 @@ GitHub Secrets/Variables.
 - Unduhan pertama: 300 hari bursa terakhir (±14 bulan, ±150 MB unduhan, beberapa menit). Selanjutnya hanya beberapa
   hari terakhir per run.
 
+### Alpha Vantage (`app/data/alpha_vantage.py`, `alpha_vantage_update.py`)
+
+Kuota gratis 25 request/hari dan 5/menit. Alokasi, urutan prioritas, dan alasan quant-nya ada di
+[`ALPHA_VANTAGE.md`](ALPHA_VANTAGE.md). Key hanya dari GitHub Secret `ALPHAVANTAGE_API_KEY`. Tanpa secret, semua
+langkah dilewati dan pipeline berjalan seperti sebelumnya.
+
 ### Intraday
 
 Tidak diimplementasikan (`BLOCKED_BY_DATA`) — data intraday gratis untuk ±900 saham tidak muat di database 1 GB dan
@@ -64,6 +75,8 @@ syarat penggunaan sumber gratis umumnya membatasi pengambilan massal.
 | Fitur | Tanpa data tambahan | Dengan data tambahan |
 |---|---|---|
 | Valuasi PIT untuk backtest | Ya (SEC EDGAR) | — |
+| Kejutan EPS vs konsensus (PEAD) | Tidak (hanya reaksi harga `f_ear3`) | Alpha Vantage gratis (secret `ALPHAVANTAGE_API_KEY`) |
+| Tanggal rilis laba pasti | Perkiraan dari pola 8-K | Alpha Vantage gratis |
 | Flow beli/jual sungguhan | Tidak (FINRA = tekanan short) | CSV/API vendor + `foreign_flow.baseline_days: null` |
 | Broker summary | Tidak ada padanan publik di AS | — |
 | Data saham delisting (bebas survivorship) | Tidak | Feed berlisensi via CSV kanonik |

@@ -31,6 +31,7 @@ jobs:
       TZ: America/New_York
       DATABASE_URL: ${{ secrets.DATABASE_URL }}               # Aiven PostgreSQL (BUKAN Neon/Supabase proyek lain); docs/SETUP_GUIDE.md
       DB_SIZE_LIMIT_MB: ${{ vars.DB_SIZE_LIMIT_MB }}          # kosong = otomatis dari provider
+      ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}   # opsional; tanpa secret langkah Alpha Vantage dilewati
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -39,6 +40,10 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - run: python main.py health --no-provider
+      - name: Alpha Vantage backfill surprise EPS (kuota hari Minggu)
+        continue-on-error: true
+        timeout-minutes: 20
+        run: python main.py av-update --mode backfill
       - name: Backtest
         run: python main.py backtest ${{ inputs.folds && format('--folds {0}', inputs.folds) || '' }} | tee -a "$GITHUB_STEP_SUMMARY"
       - name: Evaluasi modul riset (9 varian + IC faktor, point-in-time)

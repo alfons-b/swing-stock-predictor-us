@@ -36,8 +36,29 @@ def load_market(cfg: dict, repo: Repository, start=None, end=None) -> dict:
     except Exception as e:                       # database lama tanpa tabel → fitur earnings NaN (bukan error)
         log.debug("earnings_events tidak tersedia: %s", e)
         earnings = pd.DataFrame(columns=["ticker", "reaction_date"])
+    alt = _load_alt_data(repo, start)
     return {"prices": clean, "index": index, "universe": uni, "corporate_actions": ca, "earnings": earnings,
-            "fundamentals": pd.DataFrame(), "news": pd.DataFrame(), "cleaner_notes": notes}
+            "fundamentals": pd.DataFrame(), "news": alt["news"], "surprises": alt["surprises"],
+            "earnings_calendar": alt["calendar"], "cleaner_notes": notes}
+
+
+def _load_alt_data(repo: Repository, start=None) -> dict:
+    """Data Alpha Vantage (surprise EPS, kalender rilis, berita). Tabel belum ada / kosong → DataFrame kosong."""
+    from app.data.alpha_vantage_update import load_calendar, load_news, load_surprises
+    out = {}
+    for name, fn in (("surprises", load_surprises), ("calendar", load_calendar)):
+        try:
+            out[name] = fn(repo)
+        except Exception as e:
+            log.debug("%s Alpha Vantage tidak tersedia: %s", name, e)
+            out[name] = pd.DataFrame()
+    try:
+        since = (pd.Timestamp(start) if start is not None else pd.Timestamp.today()) - pd.Timedelta(days=120)
+        out["news"] = load_news(repo, since=since)
+    except Exception as e:
+        log.debug("berita Alpha Vantage tidak tersedia: %s", e)
+        out["news"] = pd.DataFrame()
+    return out
 
 
 def build_dataset(cfg: dict, repo: Repository, lookback_trading_days: int | None = None, labels: bool = True,

@@ -198,11 +198,22 @@ def _research_checks(cfg, db, put) -> None:
             put("FUNDAMENTALS", "OK" if n_f >= 0.5 * max(n_act, 1) and (age or 0) <= stale else "WARN",
                 f"{n_f}/{n_act} emiten punya laporan; periode terbaru {str(latest_pe)[:10]}")
         asof = get(cfg, "valuation.assumptions_as_of")
+        try:
+            from app.data.alpha_vantage_update import risk_free_from_treasury
+            from types import SimpleNamespace
+            rf, rf_src = risk_free_from_treasury(cfg, SimpleNamespace(db=db))
+        except Exception:
+            rf, rf_src = None, None
+        if rf is not None:
+            put("VALUATION ASSUMPTIONS", "OK", f"risk-free {rf} otomatis dari {rf_src}; ERP "
+                f"{get(cfg, 'valuation.equity_risk_premium')} (ditinjau {asof})")
+            asof = None
         if asof:
             age = (pd.Timestamp.now() - pd.Timestamp(str(asof))).days
             put("VALUATION ASSUMPTIONS", "OK" if age <= 180 else "WARN",
                 f"risk-free {get(cfg, 'valuation.risk_free_rate')}, ERP {get(cfg, 'valuation.equity_risk_premium')} "
                 f"ditinjau {asof}" + ("" if age <= 180 else " — > 180 hari: perbarui config/research.yaml"))
+        _alpha_vantage_health(cfg, db, put)
         last_flow = db.scalar("SELECT MAX(date) FROM foreign_flow_history")
         if not last_flow:
             put("SHORT FLOW", "WARN", "FOREIGN_FLOW_UNAVAILABLE — data FINRA belum ada; skor/ranking flow tidak dihitung")
@@ -225,3 +236,31 @@ def format_health(h: dict) -> str:
 
 def health_json(h: dict) -> str:
     return json.dumps(h, default=str, indent=2)
+
+
+def _alpha_vantage_health(cfg: dict, db, put) -> None:
+    """Status data Alpha Vantage: key, kuota 24 jam, cakupan surprise EPS, kalender, yield, berita."""
+    import os
+    key = (get(cfg, "alpha_vantage.api_key") or os.environ.get("ALPHAVANTAGE_API_KEY") or "").strip()
+    try:
+        since = (pd.Timestamp.now(tz="UTC") - pd.Timedelta(hours=24)).isoformat()
+        used = int(db.scalar("SELECT COUNT(*) FROM api_usage WHERE provider = 'alpha_vantage' AND called_at > ?",
+                             (since,)) or 0)
+        cov = int(db.scalar("SELECT COUNT(DISTINCT stock_id) FROM earnings_surprises") or 0)
+        n_act = int(db.scalar("SELECT COUNT(*) FROM stocks WHERE is_active = ?", (True,)) or 0)
+        cal = db.scalar("SELECT MAX(as_of) FROM earnings_calendar")
+        ust = db.scalar("SELECT MAX(date) FROM macro_series WHERE series = 'UST10YEAR'")
+        news = db.scalar("SELECT MAX(published_at) FROM news_items")
+    except Exception as e:
+        put("ALPHA VANTAGE", "INFO", f"tabel belum tersedia ({type(e).__name__})")
+        return
+    if not key and not cov:
+        put("ALPHA VANTAGE", "INFO", "tidak aktif — set GitHub Secret ALPHAVANTAGE_API_KEY (opsional, gratis)")
+        return
+    limit = int(get(cfg, "alpha_vantage.daily_limit", 25) or 25)
+    cal_age = (pd.Timestamp.now() - pd.Timestamp(str(cal)[:10])).days if cal else None
+    status = "OK" if cal_age is not None and cal_age <= 4 else "WARN"
+    put("ALPHA VANTAGE", status,
+        f"kuota 24 jam {used}/{limit}; surprise EPS {cov}/{n_act} saham; kalender {str(cal)[:10] if cal else '-'}"
+        f"; Treasury 10Y {str(ust)[:10] if ust else '-'}; berita {str(news)[:10] if news else '-'}"
+        + ("" if status == "OK" else " — kalender rilis basi/kosong: cek langkah 'Alpha Vantage' di workflow Daily"))

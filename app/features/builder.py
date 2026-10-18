@@ -65,6 +65,9 @@ def build_features(market: dict, cfg: dict) -> pd.DataFrame:
     from app.features.alpha import add_market_relative
     df = add_market_relative(df)
     df = add_earnings_features(df, market.get("earnings"))
+    from app.features.surprise import add_surprise_features, apply_earnings_calendar
+    df = add_surprise_features(df, market.get("surprises"))
+    df = apply_earnings_calendar(df, market.get("earnings_calendar"))
 
     df = merge_fundamentals(df, market.get("fundamentals"))
     df = merge_news(df, market.get("news"))

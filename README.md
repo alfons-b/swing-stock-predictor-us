@@ -12,12 +12,14 @@ terpisah dari Neon (versi BEI) dan Supabase (aplikasi lain), yang **diblokir** d
 GitHub Actions (cron UTC / Run workflow) ─► python main.py daily ─► Aiven PostgreSQL ◄─ Dashboard (Streamlit Cloud)
         │                                   │
         │                                   ├─ universe S&P 500+400 (Wikipedia) · harga Yahoo (^GSPC) · SEC EDGAR · FINRA
+        │                                   ├─ Alpha Vantage (opsional): surprise EPS · kalender rilis · yield · berita
         │                                   ├─ fitur → regime → sektor → setup → ML → risk → ranking
         │                                   └─ prediksi, sinyal, report, log, status run → database
         └─ job hidup hanya selama run: START → PROCESS → SAVE → EXIT
 ```
 
 **➡️ Panduan setup lengkap langkah demi langkah: [`docs/SETUP_GUIDE.md`](docs/SETUP_GUIDE.md).**
+**➡️ Alpha Vantage gratis (surprise EPS, kalender rilis laba, yield Treasury, sentimen berita): [`docs/ALPHA_VANTAGE.md`](docs/ALPHA_VANTAGE.md).**
 **➡️ Audit quant & perbaikan v2 (label residual, fitur alpha, earnings SEC, uji signifikansi): [`docs/QUANT_V2.md`](docs/QUANT_V2.md).**
 
 ---
@@ -63,6 +65,7 @@ GitHub Actions (cron UTC / Run workflow) ─► python main.py daily ─► Aive
 | `python main.py fundamentals-update [--tickers AAPL,MSFT] [--earnings-backfill]` / `foreign-flow-update` / `valuation` | Modul riset terpisah (laporan SEC + tanggal rilis laba 8-K) |
 | `python main.py train [--if-due]` · `backtest [--folds N]` · `evaluate` · `evaluate-modules` | Model & evaluasi (backtest mencetak alpha, beta, CI Sharpe, Deflated Sharpe, verdict) |
 | `python main.py factor-report [--top N]` | Rank IC tiap fitur vs return residual 5 hari (bukti per sinyal) |
+| `python main.py av-update [--mode daily\|backfill] [--max-calls N]` | Alpha Vantage: kalender rilis, yield, berita, surprise EPS (kuota 25/hari) |
 | `python main.py models [--promote model_v00X]` | Daftar versi model / manual override |
 | `python main.py db-maintenance [--dry-run] [--full]` · `db-schema` | Retensi + VACUUM · tulis `sql/schema_postgres.sql` |
 | `python main.py challenger-train --model lstm\|gru\|tft\|arima_garch` | Model challenger (butuh `requirements-models.txt`) |

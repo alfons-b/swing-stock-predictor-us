@@ -11,6 +11,7 @@ dashboard. Semua layanan yang dipakai **gratis** dan **tidak memakai Supabase ma
 | Data harga | Yahoo Finance | gratis |
 | Daftar saham + sektor | Wikipedia (S&P 500 + S&P MidCap 400) | gratis |
 | Laporan keuangan | SEC EDGAR | gratis |
+| Surprise EPS, kalender rilis laba, yield Treasury, berita (opsional) | Alpha Vantage (25 request/hari) | gratis |
 | Flow harian | FINRA daily short sale volume | gratis |
 
 Perkiraan waktu: ±45–90 menit (sebagian besar menunggu workflow selesai).
@@ -96,6 +97,7 @@ Di repo: **Settings → Secrets and variables → Actions**.
 | Name | Value | Wajib |
 |---|---|---|
 | `DATABASE_URL` | Service URI Aiven dari Langkah 2.7 | **Ya** |
+| `ALPHAVANTAGE_API_KEY` | key gratis dari https://www.alphavantage.co/support/#api-key | Tidak, tapi **disarankan**: surprise EPS (sinyal PEAD), tanggal rilis laba pasti, yield Treasury, sentimen berita ([`ALPHA_VANTAGE.md`](ALPHA_VANTAGE.md)) |
 | `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | lihat Langkah 9 | Tidak |
 
 **Tab *Variables* → New repository variable:**
@@ -358,6 +360,8 @@ Uji dengan data nyata di laptop (butuh internet): hapus dua variabel di atas, se
 | `password authentication failed for user "avnadmin"` | password di secret `DATABASE_URL` salah/berubah | salin ulang Service URI dari console Aiven → ganti secret |
 | Log `FINRA menolak akses (HTTP 403)` | CDN FINRA memblokir IP runner | sementara; fitur short-flow kosong tetapi pipeline tetap jalan. Bila berlangsung > 1 minggu set Variable `FINRA_ENABLED=false` |
 | Data Health `universe_sp400` gagal | Wikipedia menolak User-Agent | pastikan Variable `SEC_USER_AGENT` berisi email; run berikutnya memakai cadangan REST API |
+| Annotation "Alpha Vantage … dilewati" | secret `ALPHAVANTAGE_API_KEY` belum diset | tambahkan secret (Langkah 3); opsional |
+| Data Health `ALPHA VANTAGE: WARN … kalender basi` | kuota habis / Alpha Vantage menolak | normal sesekali; bila berhari-hari, cek annotation run Daily dan validitas key |
 | Verdict `BELUM ADA BUKTI EDGE` | backtest belum mengalahkan benchmark beta-matched secara signifikan | bukan error — jangan menaikkan modal; lihat QUANT_V2.md §3 |
 
 ---

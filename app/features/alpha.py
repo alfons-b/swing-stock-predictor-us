@@ -25,7 +25,7 @@ import pandas as pd
 XS_RANK_FEATURES = [
     "f_ret5", "f_ret20", "f_mom_12_1", "f_mom_6_1", "f_dist_52w_high", "f_resid_ret5", "f_resid_ret21",
     "f_vol20", "f_idio_vol60", "f_max_ret21", "f_beta60", "f_volume_ratio", "f_rsi14", "f_dist_sma50",
-    "f_log_value20", "f_atr_pct", "f_rs_sector20", "f_ear3", "f_days_since_earn",
+    "f_log_value20", "f_atr_pct", "f_rs_sector20", "f_ear3", "f_days_since_earn", "f_sue", "f_eps_surprise_pct",
 ]
 
 

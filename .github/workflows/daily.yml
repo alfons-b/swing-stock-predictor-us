@@ -37,6 +37,7 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}               # Aiven PostgreSQL (BUKAN Neon/Supabase proyek lain); docs/SETUP_GUIDE.md
       DB_SIZE_LIMIT_MB: ${{ vars.DB_SIZE_LIMIT_MB }}          # kosong = otomatis dari provider
       SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT }}                 # 'Nama email@domain.com' — wajib untuk SEC EDGAR
+      ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}   # opsional; tanpa secret langkah Alpha Vantage dilewati
       MODEL_STORAGE: ${{ vars.MODEL_STORAGE || 'auto' }}
       REPORT_STORAGE: ${{ vars.REPORT_STORAGE || 'auto' }}
       PORTFOLIO_VALUE: ${{ vars.PORTFOLIO_VALUE || '10000' }}       # USD
@@ -52,6 +53,10 @@ jobs:
       - run: pip install -r requirements.txt
       - name: Health check (database wajib OK)
         run: python main.py health --no-provider
+      - name: Alpha Vantage (kalender rilis, yield, berita, surprise EPS — kuota 25/hari)
+        continue-on-error: true      # data tambahan: gagal/kuota habis tidak boleh menghentikan scan
+        timeout-minutes: 20
+        run: python main.py av-update --mode daily
       - name: Daily pipeline
         run: python main.py daily ${{ inputs.skip_ingest && '--skip-ingest' || '' }}
       - name: Ringkasan run

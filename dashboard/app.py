@@ -132,6 +132,70 @@ def latest_test_backtest():
     return (jl(r["metrics"].iloc[0]), jl(r["benchmark"].iloc[0])) if len(r) else (None, None)
 
 
+def _safe_q(sql: str, params: tuple = ()) -> pd.DataFrame:
+    try:
+        return q(sql, params)
+    except Exception:                       # tabel Alpha Vantage belum ada (sebelum migrasi v9)
+        return pd.DataFrame()
+
+
+def show_earnings_and_news(tk: str) -> None:
+    """Earnings & berita dari Alpha Vantage: rilis berikutnya (resmi), riwayat kejutan EPS, berita + sentimen."""
+    st.subheader("Earnings & berita")
+    cal = _safe_q("SELECT c.fiscal_date_ending, c.report_date, c.estimate, c.time_of_day, c.as_of FROM earnings_calendar c "
+                  "JOIN stocks s ON s.id = c.stock_id WHERE s.ticker = ? ORDER BY c.as_of DESC", (tk,))
+    sur = _safe_q("SELECT e.fiscal_date_ending, e.reported_date, e.report_time, e.reported_eps, e.estimated_eps, "
+                  "e.surprise, e.surprise_pct FROM earnings_surprises e JOIN stocks s ON s.id = e.stock_id "
+                  "WHERE s.ticker = ? ORDER BY e.fiscal_date_ending DESC LIMIT 8", (tk,))
+    k = st.columns(3)
+    if len(cal):
+        cal = cal.drop_duplicates("fiscal_date_ending", keep="first")
+        up = cal[pd.to_datetime(cal["report_date"]) >= pd.Timestamp.today().normalize()].sort_values("report_date")
+        if len(up):
+            r = up.iloc[0]
+            days = (pd.Timestamp(r["report_date"]) - pd.Timestamp.today().normalize()).days
+            k[0].metric("Rilis laba berikutnya", str(r["report_date"])[:10], f"{days} hari lagi", delta_color="off")
+            est = pd.to_numeric(r["estimate"], errors="coerce")
+            k[1].metric("Konsensus EPS", f"${est:,.2f}" if pd.notna(est) else "n/a", r["time_of_day"] or None,
+                        delta_color="off")
+    if len(sur):
+        beat = (pd.to_numeric(sur["surprise"], errors="coerce") > 0).mean()
+        k[2].metric("Beat rate 8 kuartal", f"{beat:.0%}")
+        show = sur.rename(columns={"fiscal_date_ending": "kuartal", "reported_date": "rilis", "report_time": "jam",
+                                   "reported_eps": "EPS aktual", "estimated_eps": "EPS estimasi", "surprise": "surprise",
+                                   "surprise_pct": "surprise %"})
+        st.dataframe(show, hide_index=True, use_container_width=True)
+    elif not len(cal):
+        st.caption("Belum ada data earnings Alpha Vantage untuk saham ini (backfill ±20 saham/hari; atau secret "
+                   "ALPHAVANTAGE_API_KEY belum diset).")
+    news = _safe_q("SELECT n.published_at, n.headline, n.source, n.sentiment, n.relevance FROM news_items n "
+                   "JOIN stocks s ON s.id = n.stock_id WHERE s.ticker = ? ORDER BY n.published_at DESC LIMIT 12", (tk,))
+    if len(news):
+        avg = pd.to_numeric(news["sentiment"], errors="coerce").mean()
+        st.caption(f"Sentimen berita rata-rata {avg:+.2f} (−1 sangat negatif … +1 sangat positif; ≥ ±0,15 = condong)")
+        st.dataframe(news.rename(columns={"published_at": "waktu (ET)", "headline": "judul", "source": "sumber",
+                                          "sentiment": "sentimen", "relevance": "relevansi"}),
+                     hide_index=True, use_container_width=True)
+
+
+def show_macro():
+    m = _safe_q("SELECT series, date, value FROM macro_series WHERE series IN ('UST10YEAR', 'UST2YEAR', 'UST3MONTH') "
+                "AND date >= ? ORDER BY date", ((pd.Timestamp.today() - pd.Timedelta(days=400)).strftime("%Y-%m-%d"),))
+    if m.empty:
+        return
+    w = m.pivot_table(index="date", columns="series", values="value").sort_index()
+    last = w.ffill().iloc[-1]
+    k = st.columns(4)
+    for i, (lab, col) in enumerate((("Treasury 10Y", "UST10YEAR"), ("Treasury 2Y", "UST2YEAR"), ("Treasury 3M", "UST3MONTH"))):
+        if col in last and pd.notna(last[col]):
+            k[i].metric(lab, f"{last[col]:.2f}%")
+    if {"UST10YEAR", "UST3MONTH"} <= set(last.index):
+        slope = last["UST10YEAR"] - last["UST3MONTH"]
+        k[3].metric("Kurva 10Y − 3M", f"{slope:+.2f} pp", "terbalik (inversi)" if slope < 0 else "normal",
+                    delta_color="inverse" if slope < 0 else "off")
+    st.caption(f"Yield Treasury AS (Alpha Vantage) per {str(w.index[-1])[:10]}; 10Y dipakai sebagai risk-free valuasi.")
+
+
 def show_strategy_verdict():
     v = H.strategy_verdict(*latest_test_backtest())
     if v:
@@ -153,6 +217,7 @@ if page == "Market Overview":
     if len(run):
         st.caption(f"Run {run['run_id'].iloc[0]} · mulai {str(run['started_at'].iloc[0])[:16]} UTC")
     show_strategy_verdict()
+    show_macro()
     if len(ix):
         ix = ix.sort_values("date")
         st.plotly_chart(go.Figure(go.Scatter(x=pd.to_datetime(ix["date"]), y=pd.to_numeric(ix["close"]), line=dict(color=INK)))
@@ -278,6 +343,7 @@ elif page == "Stock Detail":
         k[2].metric("Risk/reward", f"{float(r['risk_reward']):.2f}" if pd.notna(r["risk_reward"]) else "n/a")
         k[3].metric("Model", r["model_version"])
         st.caption(f"Prediksi {r['prediction_date']} · data {r['data_status']}")
+    show_earnings_and_news(tk)
 
 elif page == "Prediction History":
     st.title("Riwayat prediksi")

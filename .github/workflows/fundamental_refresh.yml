@@ -37,6 +37,7 @@ jobs:
       DATABASE_URL: ${{ secrets.DATABASE_URL }}
       DB_SIZE_LIMIT_MB: ${{ vars.DB_SIZE_LIMIT_MB }}
       SEC_USER_AGENT: ${{ vars.SEC_USER_AGENT }}                 # 'Nama email@domain.com' — wajib untuk SEC EDGAR
+      ALPHAVANTAGE_API_KEY: ${{ secrets.ALPHAVANTAGE_API_KEY }}   # opsional
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-python@v7
@@ -54,6 +55,10 @@ jobs:
           set -o pipefail
           python main.py --set fundamentals.max_per_run=2000 fundamentals-update --earnings-backfill \
             ${{ inputs.tickers && format('--tickers {0}', inputs.tickers) || '' }} | tee -a "$GITHUB_STEP_SUMMARY"
+      - name: Alpha Vantage (yield Treasury untuk risk-free + surprise EPS bila kuota tersisa)
+        continue-on-error: true
+        timeout-minutes: 20
+        run: python main.py av-update --mode daily
       - name: Hitung ulang valuasi
         run: |
           set -o pipefail

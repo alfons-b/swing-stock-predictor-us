@@ -39,3 +39,23 @@ universe:
   # Tolak deaktivasi massal bila daftar baru < 80% jumlah aktif. Daftar dari sumber CADANGAN (subset) TIDAK PERNAH
   # menonaktifkan saham — lihat app/data/us_universe.py.
   min_ratio_to_deactivate: 0.8
+
+alpha_vantage:
+  # Data alternatif gratis (https://www.alphavantage.co). Key HANYA dari GitHub Secret ALPHAVANTAGE_API_KEY —
+  # jangan menulis key di file ini (repo publik). Tanpa key semua langkah Alpha Vantage dilewati dengan rapi.
+  enabled: ${ALPHAVANTAGE_ENABLED:-true}
+  api_key: ${ALPHAVANTAGE_API_KEY:-}
+  daily_limit: 25                 # paket gratis: 25 request / 24 jam (dihitung bergulir dari tabel api_usage)
+  per_minute_limit: 5
+  # Alokasi per run Daily (sisa kuota otomatis untuk EARNINGS = surprise EPS per saham):
+  calendar_every_days: 1          # EARNINGS_CALENDAR (1 request = tanggal rilis + konsensus EPS seluruh pasar AS)
+  treasury_maturities: [10year, 2year, 3month]
+  treasury_refresh_days: 2        # yield harian; diambil ulang bila data terakhir > N hari kalender
+  fedfunds_refresh_days: 30
+  news_calls_per_run: 2           # NEWS_SENTIMENT: 2 jendela 12 jam × 1.000 artikel terbaru
+  news_min_relevance: 0.25        # ticker dianggap "dibahas" bila relevance_score ≥ ini
+  earnings_refresh_days: 120      # saham tanpa rilis baru dicek ulang paling cepat tiap N hari
+  fresh_report_days: 10           # rilis laba ≤ N hari lalu tanpa data surprise → prioritas utama
+  # Valuasi: risk-free = yield Treasury 10Y terbaru (bila ≤ N hari) menggantikan angka manual di research.yaml
+  risk_free_from_treasury: true
+  risk_free_max_age_days: 10

@@ -94,6 +94,8 @@ def _cutoffs(cfg: dict, today: pd.Timestamp) -> dict:
         .strftime("%Y-%m-%d"),
         "coverage": (today - pd.Timedelta(days=int(r.get("scan_coverage_days", 120)))).strftime("%Y-%m-%d"),
         "forecasts": (today - pd.Timedelta(days=int(r.get("model_forecasts_days", 180)))).strftime("%Y-%m-%d"),
+        "news": (today - pd.Timedelta(days=int(r.get("news_items_days", 120)))).strftime("%Y-%m-%d"),
+        "api_usage": (today - pd.Timedelta(days=int(r.get("api_usage_days", 400)))).strftime("%Y-%m-%d"),
     }
 
 
@@ -154,6 +156,12 @@ def _plan(cfg: dict, db: Database, today: pd.Timestamp) -> list[dict]:
         {"name": f"cakupan scan per emiten sebelum {c['coverage']}", "table": "scan_coverage",
          "count": "SELECT COUNT(*) FROM scan_coverage WHERE scan_date < ?",
          "sql": "DELETE FROM scan_coverage WHERE scan_date < ?", "params": [c["coverage"]]},
+        {"name": f"berita Alpha Vantage sebelum {c['news']}", "table": "news_items",
+         "count": "SELECT COUNT(*) FROM news_items WHERE published_at < ?",
+         "sql": "DELETE FROM news_items WHERE published_at < ?", "params": [c["news"]]},
+        {"name": f"log kuota API sebelum {c['api_usage']}", "table": "api_usage",
+         "count": "SELECT COUNT(*) FROM api_usage WHERE called_at < ?",
+         "sql": "DELETE FROM api_usage WHERE called_at < ?", "params": [c["api_usage"]]},
         *val_steps,
         {"name": f"file model lama (selain ACTIVE & {keep_models} terbaru)", "table": "model_versions",
          "count": f"SELECT COUNT(*) FROM model_versions WHERE {old_models}",

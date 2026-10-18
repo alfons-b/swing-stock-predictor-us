@@ -43,6 +43,11 @@ def run_research(cfg: dict, repo: Repository, prices: pd.DataFrame, sig: pd.Data
 
     as_of = pd.Timestamp(as_of).normalize()
     status, stats = {}, {}
+    try:                                                   # risk-free = yield Treasury 10Y terbaru (Alpha Vantage)
+        from app.data.alpha_vantage_update import apply_market_rates
+        stats["risk_free_source"] = apply_market_rates(cfg, repo, as_of)
+    except Exception as e:
+        log.debug("risk-free otomatis gagal: %s", e)
     if update_sources:
         stats["fundamentals"] = _stage("fundamentals", lambda: update_fundamentals(cfg, repo, as_of), status)
         stats["foreign_flow"] = _stage("foreign_flow_update", lambda: update_foreign_flow(cfg, repo, as_of), status)

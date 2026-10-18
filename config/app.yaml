@@ -26,6 +26,8 @@ retention:                                     # `python main.py db-maintenance`
   model_artifacts_keep: 3                      # file model selain ACTIVE yang disimpan; registry & metrik tetap
   scan_coverage_days: 120                      # status cakupan per emiten (ringkasan per run disimpan selamanya)
   model_forecasts_days: 90                     # prakiraan harian model challenger (metrik evaluasi disimpan selamanya)
+  news_items_days: 120                         # berita + skor sentimen Alpha Vantage (±1.500 baris/hari)
+  api_usage_days: 400                          # log kuota API (menentukan saham mana yang sudah di-backfill)
 
 coverage:                                      # app/scanner/coverage.py — status per emiten setiap scan
   # "Board" (kolom board di tabel stocks) yang tidak pernah boleh BUY → EXCLUDED. Universe indeks berisi

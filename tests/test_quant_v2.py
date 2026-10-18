@@ -136,6 +136,19 @@ class TestRetrainSkipIsCheap(unittest.TestCase):
         self.assertIn("force=true", out["reason"])
 
 
+class TestFactorReportConstantFeatures(unittest.TestCase):
+    def test_market_wide_feature_gets_no_fake_tstat(self):
+        from app.research.factor_report import factor_ic_table
+        rng = np.random.default_rng(2)
+        rows = []
+        for i, d in enumerate(pd.bdate_range("2024-01-01", periods=300)):
+            x = rng.normal(size=40)
+            rows.append(pd.DataFrame({"date": d, "ticker": [f"T{j}" for j in range(40)], "is_tradeable": True,
+                                      "f_signal": x, "f_regime": float(i % 7), "y_xs_5d": 0.2 * x + rng.normal(size=40)}))
+        t = factor_ic_table(pd.concat(rows), make_cfg(), min_names=30)
+        self.assertEqual(t["feature"].tolist(), ["f_signal"])                    # f_regime tidak dinilai
+
+
 class TestFilters(unittest.TestCase):
     def _run(self, earn_days, er):
         from app.strategy.filters import apply_filters

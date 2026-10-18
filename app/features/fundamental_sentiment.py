@@ -53,6 +53,13 @@ def merge_news(df: pd.DataFrame, news: pd.DataFrame, window: int = 5) -> pd.Data
     out["news_sent5"] = (num / out["news_count5"].replace(0, np.nan))
     base = g["news_count"].transform(lambda x: x.shift(window).rolling(60, min_periods=20).mean() * window)
     out["news_abnormal"] = out["news_count5"] / base.replace(0, np.nan)
+    # Sebelum data berita mulai dikumpulkan, "0 berita" berarti TIDAK TAHU, bukan tidak ada berita → NaN.
+    # Dengan begitu aturan cakupan fitur (> 50% baris training) menahan fitur berita dari model sampai riwayatnya
+    # cukup panjang, alih-alih model belajar dari pola "dulu selalu 0".
+    first = n["date"].min()
+    before = out["date"] < first + pd.Timedelta(days=7)
+    out.loc[before, ["news_count", "news_pos", "news_neg", "news_count5", "news_pos5", "news_neg5",
+                     "news_abnormal"]] = np.nan
     return out
 
 

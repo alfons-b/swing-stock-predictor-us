@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from app.database.db import Database
 
-SCHEMA_VERSION = 8   # 8: earnings_events (SEC 8-K Item 2.02)
+SCHEMA_VERSION = 9   # 8: earnings_events (SEC 8-K Item 2.02) · 9: Alpha Vantage (surprise EPS, kalender, makro, berita, kuota)
 
 TYPES = {
     "sqlite": {"ID": "INTEGER PRIMARY KEY AUTOINCREMENT", "TEXT": "TEXT", "INT": "INTEGER", "REAL": "REAL",
@@ -174,6 +174,32 @@ TABLES = [
                          ("reaction_date", "DATE", "NOT NULL"), ("form", "TEXT", ""), ("source", "TEXT", ""),
                          ("retrieved_at", "TS", "")],
      [["stock_id", "accession"]], [["reaction_date"]]),
+    # ---- Alpha Vantage (v9). Pemakaian kuota (jendela 24 jam bergulir, lintas workflow).
+    ("api_usage", [("id", "ID", ""), ("provider", "TEXT", "NOT NULL"), ("called_at", "TS", "NOT NULL"),
+                   ("function", "TEXT", ""), ("symbol", "TEXT", ""), ("status", "TEXT", "")],
+     [], [["provider", "called_at"], ["function", "symbol"]]),
+    # EPS aktual vs estimasi analis per kuartal (±4 baris/emiten/tahun; riwayat penuh dari 1 request).
+    ("earnings_surprises", [("id", "ID", ""), ("stock_id", "INT", "NOT NULL REFERENCES stocks(id)"),
+                            ("fiscal_date_ending", "DATE", "NOT NULL"), ("reported_date", "DATE", "NOT NULL"),
+                            ("report_time", "TEXT", ""), ("reported_eps", "REAL", ""), ("estimated_eps", "REAL", ""),
+                            ("surprise", "REAL", ""), ("surprise_pct", "REAL", ""), ("source", "TEXT", ""),
+                            ("retrieved_at", "TS", "")],
+     [["stock_id", "fiscal_date_ending"]], [["reported_date"]]),
+    # Kalender rilis laba — disimpan sebagai LOG PERUBAHAN (baris baru hanya bila tanggal/estimasi berubah), sehingga
+    # riwayat revisi konsensus EPS terkumpul tanpa menulis ±900 baris per hari.
+    ("earnings_calendar", [("id", "ID", ""), ("stock_id", "INT", "NOT NULL REFERENCES stocks(id)"),
+                           ("fiscal_date_ending", "DATE", "NOT NULL"), ("report_date", "DATE", "NOT NULL"),
+                           ("estimate", "REAL", ""), ("time_of_day", "TEXT", ""), ("as_of", "DATE", "NOT NULL"),
+                           ("retrieved_at", "TS", "")],
+     [["stock_id", "fiscal_date_ending", "as_of"]], [["report_date"], ["as_of"]]),
+    ("macro_series", [("id", "ID", ""), ("series", "TEXT", "NOT NULL"), ("date", "DATE", "NOT NULL"),
+                      ("value", "REAL", ""), ("source", "TEXT", ""), ("retrieved_at", "TS", "")],
+     [["series", "date"]], [["series", "date"]]),
+    ("news_items", [("id", "ID", ""), ("stock_id", "INT", "NOT NULL REFERENCES stocks(id)"),
+                    ("published_at", "TS", "NOT NULL"), ("url_hash", "TEXT", "NOT NULL"), ("headline", "TEXT", ""),
+                    ("source", "TEXT", ""), ("sentiment", "REAL", ""), ("relevance", "REAL", ""),
+                    ("retrieved_at", "TS", "")],
+     [["stock_id", "url_hash"]], [["published_at"]]),
     ("schema_migrations", [("version", "INT", "PRIMARY KEY"), ("applied_at", "TS", "")], [], []),
 ]
 
