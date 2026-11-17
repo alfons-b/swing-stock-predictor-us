@@ -120,7 +120,10 @@ PAGES = ["Market Overview", "Full-Market Coverage", "Top Swing Stocks", "Sector 
 page = st.sidebar.radio("Halaman", PAGES)
 st.sidebar.caption("Analytical decision support — bukan jaminan profit. Bukan nasihat investasi.")
 
-last_sig_date = c.db.scalar("SELECT MAX(signal_date) FROM trading_signals") or c.db.scalar("SELECT MAX(prediction_date) FROM predictions")
+# Tanggal scan terakhir = MAX(prediction_date): predictions ditulis SETIAP run (semua saham), sedangkan trading_signals
+# hanya berisi BUY. Pada hari NO TRADE trading_signals kosong, sehingga MAX(signal_date) tertahan di hari BUY terakhir
+# dan seluruh dashboard tampak "stuck" di tanggal lama.
+last_sig_date = c.db.scalar("SELECT MAX(prediction_date) FROM predictions") or c.db.scalar("SELECT MAX(signal_date) FROM trading_signals")
 last_sig_date = str(last_sig_date)[:10] if last_sig_date else None
 st.sidebar.caption(H.connection_caption(c.db, last_sig_date))
 
